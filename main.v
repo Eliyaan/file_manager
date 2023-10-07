@@ -5,46 +5,114 @@ struct App {
 mut:
     tui &tui.Context = unsafe { nil }
 
-	text string = 'Hello from V!'
 	actual_path string = os.abs_path("")
 	actual_i int
 	dir_list []string
+	frame_nb int 
+
+	old_actual_path string
+	old_actual_i int
+}
+
+fn er(problem string) {
+	os.write_file('C:/Users/PACHECON/_cv/file_manager/error_logs', problem) or { panic(err) }
 }
 
 fn event(e &tui.Event, x voidptr) {
 	mut app := unsafe { &App(x) }
     if e.typ == .key_down {
 		match e.code {
-			.up {app.actual_i = if (app.actual_i-1) == -1 {app.dir_list.len-1} else {app.actual_i-1}}
-			.down {app.actual_i = (app.actual_i+1)%app.dir_list.len}
-			.left {app.text = 'left'}
-			.right {app.text = 'right'}
+			.up {if app.dir_list != [] {app.actual_i = if (app.actual_i-1) == -1 {app.dir_list.len-1} else {app.actual_i-1}}}
+			.down {if app.dir_list != [] {app.actual_i = (app.actual_i+1)%app.dir_list.len}}
+			.left {app.actual_path = os.abs_path(os.dir(app.actual_path)+'\\'); os.chdir(app.actual_path) or {er("left chdir $err $app.actual_path");""}}
+			.right {if app.dir_list != [] {if os.is_dir(app.dir_list[app.actual_i]) {if app.actual_path[app.actual_path.len-1].ascii_str() != "\\" {app.actual_path = "$app.actual_path\\${app.dir_list[app.actual_i]}"}else{app.actual_path = "$app.actual_path${app.dir_list[app.actual_i]}"}}; os.chdir(app.actual_path) or {panic(err)}}}
+			.enter {if app.dir_list != [] {if os.is_dir(app.dir_list[app.actual_i]) {app.actual_path = "$app.actual_path\\${app.dir_list[app.actual_i]}"}; os.chdir(app.actual_path) or {panic(err)}}}
 			.escape {exit(0)}
 			else {}
 		} 
     }
 }
 
-fn frame(x voidptr) {
-    mut app := unsafe { &App(x) }
-
-    app.tui.clear()
+fn (mut app App) render(){
+	app.tui.clear()
     //app.tui.draw_rect(20, 6, 41, 10)
-	app.dir_list = os.ls(app.actual_path) or {panic(err)}
+	app.tui.draw_text(0, 0, "$app.actual_path")
+	mut encountered_file := -1
+	app.tui.set_color(r: 186, g: 222, b: 255)
 	for i, file in app.dir_list{
-		if i == app.actual_i{
-			app.tui.set_bg_color(r: 63, g: 81, b: 181)
-			app.tui.draw_text(0, i+1, "-$file-")
-			app.tui.reset_bg_color()
+		if os.is_dir(file){
+			if i == app.actual_i{
+				app.tui.set_bg_color(r: 63, g: 81, b: 181)
+				app.tui.draw_text(0, i+3, "> $file")
+				app.tui.reset_bg_color()
+			}else{
+				app.tui.draw_text(0, i+3, "  $file")
+			}
 		}else{
-			app.tui.draw_text(0, i+1, file)
-		}
+			if encountered_file == -1 {
+				app.tui.set_color(r: 255, g: 255, b: 255)
+				encountered_file = i
+			}
+			if i == app.actual_i{
+				app.tui.set_bg_color(r: 63, g: 124, b:181)
+				app.tui.draw_text(0, i+4, "> $file")
+				app.tui.reset_bg_color()
+			}else{
+				app.tui.draw_text(0, i+4, "  $file")
+			}
+		}	
 	}
-    
+	if app.dir_list.len == 0{
+		app.tui.draw_text(0, 3, "Empty directory")
+	}else{
+		if encountered_file != -1{
+			app.tui.draw_text(0, encountered_file+3, "-------------------")
+		}else{
+			app.tui.draw_text(0, app.dir_list.len+3, "-------------------")
+		}
+		app.tui.draw_text(0, app.tui.window_height, os.abs_path(app.dir_list[app.actual_i]))
+	}
+
+
     app.tui.set_cursor_position(0, 0)
 
     app.tui.reset()
     app.tui.flush()
+}
+
+fn frame(x voidptr) {
+    mut app := unsafe { &App(x) }
+	mut ask_render := false
+	app.frame_nb = (app.frame_nb+1)%30
+	if app.old_actual_path != app.actual_path{
+		app.update_dir_list()
+		ask_render = true
+		app.actual_i = 0
+		app.old_actual_path = app.actual_path
+	}else{
+		if app.frame_nb%15 == 0{
+			app.update_dir_list()
+		}
+	}
+
+	if app.old_actual_i != app.actual_i{
+		ask_render = true
+		app.old_actual_i = app.actual_i
+	}
+
+	if ask_render{ 
+		app.render()
+	}
+}
+
+fn (mut app App) update_dir_list() {
+	app.dir_list = os.ls(app.actual_path) or {panic(err)}
+	app.dir_list.sort(|a,b| int(os.is_dir(os.abs_path(a))) > int(os.is_dir(os.abs_path(b))))
+}
+
+fn (mut app App) initialisation() {
+	app.tui.set_color(r: 255, g: 255, b: 255)
+	app.update_dir_list()
 }
 
 fn main() {
@@ -76,5 +144,6 @@ The returned path does not end in a separator unless it is the root directory.
         frame_fn: frame
         hide_cursor: true
     )
+	app.initialisation()
     app.tui.run()!
 }
