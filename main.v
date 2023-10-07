@@ -3,8 +3,6 @@ import os
 
 /*
 TODO :
-sorting by name
-actual_i when left on the previous dir
 */
 
 struct App {
