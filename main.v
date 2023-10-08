@@ -1,4 +1,5 @@
 import term.ui as tui
+import time
 import os
 
 /*
@@ -77,6 +78,8 @@ fn (mut app App) go_in() {
 				app.actual_path = '${app.actual_path}${app.dir_list[app.actual_i]}'
 			}
 			os.chdir(app.actual_path) or { er("go_in $err"); app.chdir_error = "$err"}
+		}else{
+			spawn os.execute("C:/windows/system32/notepad.exe ${app.actual_path+'/'+app.dir_list[app.actual_i]}")
 		}
 	}
 	app.last_event = 'go_in'
@@ -84,11 +87,12 @@ fn (mut app App) go_in() {
 
 fn (mut app App) render() {
 	app.tui.clear()
+	app.tui.set_color(r: 255, g: 255, b: 255) // white font
 
 	// app.tui.draw_rect(20, 6, 41, 10)
 	app.tui.draw_text(0, 0, '${app.actual_path}')
+	app.tui.set_color(r: 186, g: 222, b: 255) // color for dirs
 	mut encountered_file := -1
-	app.tui.set_color(r: 186, g: 222, b: 255)
 	if app.chdir_error == "" {
 		for i, file in app.dir_list {
 			if os.is_dir(file) {
@@ -121,7 +125,7 @@ fn (mut app App) render() {
 			} else {
 				app.tui.draw_text(0, app.dir_list.len + 3, '-------------------')
 			}
-			app.tui.draw_text(0, app.tui.window_height, os.abs_path(app.dir_list[app.actual_i]))
+			app.tui.draw_text(0, app.tui.window_height, '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str())+"o"} else {"Directory"}):-15} | Modified the ${(time.date_from_days_after_unix_epoch(int(os.file_last_mod_unix(app.dir_list[app.actual_i]))/86400).ymmdd()):-15} | ${os.abs_path(app.dir_list[app.actual_i])}')
 		}
 	}else{
 		app.tui.draw_text(0, 2, app.chdir_error)
@@ -131,6 +135,17 @@ fn (mut app App) render() {
 
 	app.tui.reset()
 	app.tui.flush()
+}
+
+fn space_nb(nb string) string {
+	mut result := ""
+	for i, chr in nb{
+		result += chr.ascii_str()
+		if (nb.len-1-i)%3==0{
+			result += " "
+		}
+	}
+	return result
 }
 
 fn (mut app App) find_last_dir() int {
@@ -216,6 +231,7 @@ fn main() {
 	// os.is_dir_empty()
 	// os.is_file()
 	/*
+	os.file_ext(app.dir_list[app.actual_i])
 	fn chdir(path string) !
 chdir changes the current working directory to the new directory in path.
 
