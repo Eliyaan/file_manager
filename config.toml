@@ -1,0 +1,7 @@
+exts_n_paths = [
+	'.txt', 'C:/windows/system32/notepad.exe',
+	'.v', 'C:/Users/PACHECON/Apps/vscodium/VSCodium.exe',
+    '.py', 'C:/Users/PACHECON/Apps/vscodium/VSCodium.exe',
+	'', 'C:/windows/system32/notepad.exe',
+    'else', 'C:/windows/system32/notepad.exe',
+]

@@ -1,9 +1,29 @@
+module main
+
 import term.ui as tui
 import time
 import os
+import toml
 
 /*
 TODO :
+find a way to redraw only the modified things (will enable the full custom bg)
+Tabs
+config : colors
+refresh les dossiers
+Protected files
+Add file
+Add dir
+Suppr file/dir
+Favorites files
+Copier les fichiers/dossiers
+Copier le path
+Copier le path de l'elem
+Launch programs (with extention name) (avec truc comme l'autocomplétion sous la barre de recherche)
+launch programs in this folder
+pouvoir mettre des commandes avec racourcis genre G = lazygit avec la possibilité spawn ou pas (donc remplacer temp le fm genre pour lazygit)
+scroll si trop de files
+config : choose your own border chars
 */
 
 struct App {
@@ -15,20 +35,20 @@ mut:
 	dir_list    []string
 	frame_nb    int
 	last_event  string
+	edit_mode string
 
 	old_actual_path string
 	old_actual_i    int
+	old_edit_mode string
 
 	chdir_error string
-}
 
-fn er(problem string) {
-	os.write_file('C:/Users/PACHECON/_cv/file_manager/error_logs', problem) or { panic(err) }
+	associated_apps map[string]string 
 }
 
 fn event(e &tui.Event, x voidptr) {
 	mut app := unsafe { &App(x) }
-	app.chdir_error = ""
+	app.chdir_error = ''
 	if e.typ == .key_down {
 		match e.code {
 			.up {
@@ -61,6 +81,10 @@ fn event(e &tui.Event, x voidptr) {
 			.enter {
 				app.go_in()
 			}
+			.n {
+				app.edit_mode = 'Name of the new folder:'
+				app.last_event = 'new_dir'
+			}
 			.escape {
 				exit(0)
 			}
@@ -69,51 +93,40 @@ fn event(e &tui.Event, x voidptr) {
 	}
 }
 
-fn (mut app App) go_in() {
-	if app.dir_list != [] {
-		if os.is_dir(app.dir_list[app.actual_i]) {
-			if app.actual_path[app.actual_path.len - 1].ascii_str() != '\\' {
-				app.actual_path = '${app.actual_path}\\${app.dir_list[app.actual_i]}'
-			} else {
-				app.actual_path = '${app.actual_path}${app.dir_list[app.actual_i]}'
-			}
-			os.chdir(app.actual_path) or { er("go_in $err"); app.chdir_error = "$err"}
-		}else{
-			spawn os.execute("C:/windows/system32/notepad.exe ${app.actual_path+'/'+app.dir_list[app.actual_i]}")
-		}
-	}
-	app.last_event = 'go_in'
-}
-
 fn (mut app App) render() {
 	app.tui.clear()
+	app.tui.set_bg_color(r: 0, g: 0, b: 0)
+	//app.tui.draw_rect(0, 0, app.tui.window_width, app.tui.window_height)
 	app.tui.set_color(r: 255, g: 255, b: 255) // white font
 
-	// app.tui.draw_rect(20, 6, 41, 10)
+	
 	app.tui.draw_text(0, 0, '${app.actual_path}')
+	// Draw the files
 	app.tui.set_color(r: 186, g: 222, b: 255) // color for dirs
 	mut encountered_file := -1
-	if app.chdir_error == "" {
+	if app.chdir_error == '' {
 		for i, file in app.dir_list {
-			if os.is_dir(file) {
-				if i == app.actual_i {
-					app.tui.set_bg_color(r: 63, g: 81, b: 181)
-					app.tui.draw_text(0, i + 3, '> ${file}')
-					app.tui.reset_bg_color()
+			if i + 3 < app.tui.window_height{	
+				if os.is_dir(file) {
+					if i == app.actual_i {
+						app.tui.set_bg_color(r: 63, g: 81, b: 181)
+						app.tui.draw_text(1, i + 3, '> ${file}')
+						app.tui.set_bg_color(r: 0, g: 0, b: 0)
+					} else {
+						app.tui.draw_text(1, i + 3, '  ${file}')
+					}
 				} else {
-					app.tui.draw_text(0, i + 3, '  ${file}')
-				}
-			} else {
-				if encountered_file == -1 {
-					app.tui.set_color(r: 255, g: 255, b: 255)
-					encountered_file = i
-				}
-				if i == app.actual_i {
-					app.tui.set_bg_color(r: 63, g: 124, b: 181)
-					app.tui.draw_text(0, i + 4, '> ${file}')
-					app.tui.reset_bg_color()
-				} else {
-					app.tui.draw_text(0, i + 4, '  ${file}')
+					if encountered_file == -1 {
+						app.tui.set_color(r: 255, g: 255, b: 255)
+						encountered_file = i
+					}
+					if i == app.actual_i {
+						app.tui.set_bg_color(r: 63, g: 124, b: 181)
+						app.tui.draw_text(1, i + 4, '> ${file}')
+						app.tui.set_bg_color(r: 0, g: 0, b: 0)
+					} else {
+						app.tui.draw_text(1, i + 4, '  ${file}')
+					}
 				}
 			}
 		}
@@ -121,15 +134,31 @@ fn (mut app App) render() {
 			app.tui.draw_text(0, 3, 'Empty directory')
 		} else {
 			if encountered_file != -1 {
-				app.tui.draw_text(0, encountered_file + 3, '-------------------')
+				app.tui.draw_text(1, encountered_file + 3, '-------------------')
 			} else {
-				app.tui.draw_text(0, app.dir_list.len + 3, '-------------------')
+				app.tui.draw_text(1, app.dir_list.len + 3, '-------------------')
 			}
-			app.tui.draw_text(0, app.tui.window_height, '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str())+"o"} else {"Directory"}):-15} | Modified the ${(time.date_from_days_after_unix_epoch(int(os.file_last_mod_unix(app.dir_list[app.actual_i]))/86400).ymmdd()):-15} | ${os.abs_path(app.dir_list[app.actual_i])}')
+			app.tui.draw_text(0, app.tui.window_height, '${
+			(if !os.is_dir(app.dir_list[app.actual_i]) {
+				space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'
+			} else {
+				'Directory'
+			}):-15} | Modified the ${(time.date_from_days_after_unix_epoch(int(os.file_last_mod_unix(app.dir_list[app.actual_i])) / 86400).ymmdd()):-15} | ${os.abs_path(app.dir_list[app.actual_i])}')
 		}
-	}else{
-		app.tui.draw_text(0, 2, app.chdir_error)
+	} else {
+		app.tui.draw_text(1, 2, app.chdir_error)
 	}
+
+	// Draw the box around the files
+	app.draw_box(0, 2, app.tui.window_width, app.tui.window_height-1)
+
+	if app.edit_mode != "" {
+		app.draw_box(app.tui.window_width/2-50, (app.tui.window_height-1)/2-2, app.tui.window_width/2+50, (app.tui.window_height-1)/2+1)
+		app.tui.draw_text(app.tui.window_width/2-49, (app.tui.window_height-1)/2-1, app.edit_mode)
+	}
+
+
+	app.tui.set_bg_color(r: 255, g: 255, b: 255)
 
 	app.tui.set_cursor_position(0, 0)
 
@@ -137,51 +166,26 @@ fn (mut app App) render() {
 	app.tui.flush()
 }
 
-fn space_nb(nb string) string {
-	mut result := ""
-	for i, chr in nb{
-		result += chr.ascii_str()
-		if (nb.len-1-i)%3==0{
-			result += " "
-		}
-	}
-	return result
-}
-
-fn (mut app App) find_last_dir() int {
-	if app.last_event == 'left' {
-		mut last_dir := app.old_actual_path[app.actual_path.len..]
-		if last_dir[0].ascii_str() == '\\' {
-			last_dir = last_dir[1..]
-		}
-		for i, elem in app.dir_list {
-			if elem == last_dir {
-				return i
-			}
-		}
-		er(last_dir.str())
-	}
-	return 0
-}
-
 fn frame(x voidptr) {
 	mut app := unsafe { &App(x) }
 	mut ask_render := false
-	app.frame_nb = (app.frame_nb + 1) % 30
+	app.frame_nb = (app.frame_nb + 1) % 3600
 	if app.old_actual_path != app.actual_path {
 		app.update_dir_list()
 		ask_render = true
 		app.actual_i = app.find_last_dir()
 		app.old_actual_path = app.actual_path
 	} else {
-		if app.frame_nb % 15 == 0 {
-			app.update_dir_list()
+		if app.frame_nb % 360 == 0 {
 		}
 	}
 
 	if app.old_actual_i != app.actual_i {
 		ask_render = true
 		app.old_actual_i = app.actual_i
+	}else if app.old_edit_mode != app.edit_mode{
+		ask_render = true
+		app.old_edit_mode = app.edit_mode
 	}
 
 	if ask_render {
@@ -189,41 +193,26 @@ fn frame(x voidptr) {
 	}
 }
 
-fn (mut app App) update_dir_list() {
-	app.dir_list = os.ls(app.actual_path) or { panic(err) }
-	custom_sort_fn := fn (a &string, b &string) int {
-		// return -1 when a comes before b
-		// return 0, when both are in same order
-		// return 1 when b comes before a
-		if os.is_dir(os.abs_path(a)) == os.is_dir(os.abs_path(b)) {
-			if a < b {
-				return -1
-			}
-			if a > b {
-				return 1
-			}
-			return 0
-		}
-		if int(os.is_dir(os.abs_path(a))) > int(os.is_dir(os.abs_path(b))) {
-			return -1
-		} else if int(os.is_dir(os.abs_path(a))) < int(os.is_dir(os.abs_path(b))) {
-			return 1
-		}
-		return 0
-	}
-	app.dir_list.sort_with_compare(custom_sort_fn)
-	//app.dir_list.sort(a<b)
-	//app.dir_list.sort(|a, b| int(os.is_dir(os.abs_path(a))) >= int(os.is_dir(os.abs_path(b))))
-	
-}
-
 fn (mut app App) initialisation() {
 	app.tui.set_color(r: 255, g: 255, b: 255)
 	app.update_dir_list()
+	app.tui.set_bg_color(r: 0, g: 0, b: 0)
+	//app.tui.draw_rect(0, 0, app.tui.window_width, app.tui.window_height)
 }
 
 fn main() {
 	mut app := &App{}
+
+	config := toml.parse_file("config.toml") or {panic(err)}
+
+	tmp_array := config.value('exts_n_paths').array().map(it.string())
+	for i, elem in tmp_array{
+		if i%2 == 0{
+			app.associated_apps[elem] = tmp_array[i+1]
+		}
+	}
+
+
 
 	// os.ls()
 	// os.abs_path()
