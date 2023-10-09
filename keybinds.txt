@@ -1,0 +1,11 @@
+Normal browsing mode
+left -> go back
+right/enter -> go in (open/go in dir)
+up/down -> move the cusros
+n -> new file
+shift + n -> new folder
+suppr -> delete file
+shift + suppr -> delete folder 
+(press enter to choose an option)
+r -> reload the display
+esc -> quit the app/current gui

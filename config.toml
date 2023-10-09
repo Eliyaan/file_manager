@@ -9,4 +9,5 @@ exts_n_paths = [
 
 
 bg_color = [20, 10, 10]
-folder_highlight = [63, 81, 181]
+folder_highlight = [163, 81, 181]
+choice_highlight = [63, 81, 181]
