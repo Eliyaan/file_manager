@@ -3,7 +3,7 @@ module main
 import os
 
 fn er(problem string) {
-	os.write_file('C:/Users/PACHECON/_cv/file_manager/error_logs', problem) or { panic(err) }
+	os.write_file('$start_path/error_logs', problem) or { panic(err) }
 }
 
 fn space_nb(nb string) string {

@@ -5,9 +5,12 @@ import time
 import os
 import toml
 
+const (
+	start_path = os.abs_path('')
+)
+
 /*
 TODO :
-Suppr file/dir w/ confirmation
 Protected files
 
 FUN - config : colors
@@ -229,6 +232,8 @@ fn event(e &tui.Event, x voidptr) {
 			}
 		}
 		
+	}else if e.typ == .resized {
+		app.refresh = true
 	}
 }
 
@@ -363,9 +368,13 @@ fn (mut app App) initialisation() {
 }
 
 fn main() {
+	println(start_path)
 	mut app := &App{}
 
 	config := toml.parse_file("config.toml") or {er("Config file error $err"); toml.Doc{}}
+	if config.value('exts_n_paths') == toml.Any(toml.Null{}) {
+		er("read config file error")
+	}
 
 	tmp_array := config.value('exts_n_paths').array().map(it.string())
 	for i, elem in tmp_array{
