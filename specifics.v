@@ -17,9 +17,9 @@ fn (mut app App) go_in() {
 		} else {
 			file_ext := os.file_ext(app.dir_list[app.actual_i])
 			if file_ext in app.associated_apps{
-				spawn os.execute('${app.associated_apps[os.file_ext(app.dir_list[app.actual_i])]} ${app.actual_path + '/' + app.dir_list[app.actual_i]}')
+				spawn os.execute('${app.associated_apps[os.file_ext(app.dir_list[app.actual_i])]} \"${app.actual_path + '/' + app.dir_list[app.actual_i]}\"')
 			}else{
-				spawn os.execute('${app.associated_apps["else"]} ${app.actual_path + '/' + app.dir_list[app.actual_i]}')
+				spawn os.execute('${app.associated_apps["else"]} \"${app.actual_path + '/' + app.dir_list[app.actual_i]}\"')
 			}
 		}
 	}
