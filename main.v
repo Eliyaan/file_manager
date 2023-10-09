@@ -7,23 +7,26 @@ import toml
 
 /*
 TODO :
-find a way to redraw only the modified things (will enable the full custom bg)
-Tabs
-config : colors
-refresh les dossiers
+Suppr file/dir w/ confirmation
 Protected files
-Add file
-Add dir
-Suppr file/dir
+
+FUN - config : colors
 Favorites files
 Copier les fichiers/dossiers
 Copier le path
 Copier le path de l'elem
-Launch programs (with extention name) (avec truc comme l'autocomplétion sous la barre de recherche)
-launch programs in this folder
-pouvoir mettre des commandes avec racourcis genre G = lazygit avec la possibilité spawn ou pas (donc remplacer temp le fm genre pour lazygit)
+pouvoir mettre des commandes avec racourcis genre G = lazygit avec la possibilité spawn ou pas (donc remplacer le fm genre pour lazygit pdt son utilisation)
 scroll si trop de files
 config : choose your own border chars
+Launch programs (with extention name) (avec truc comme l'autocomplétion sous la barre de recherche)
+launch programs in this folder (pareil mais pour vsc par ex qui en a besoin)
+help shortcuts like ? for ex
+
+find a way to redraw only the modified things (will enable the full custom bg)
+Tabs
+appui sur a->z / 0->9 emmène sur le prochain fichier contenant cette lettre
+si ctrl + 1->9  jump au fichier dans x 
+fix le underscore quand on appuie sur un nb à l'edit d'un fichier
 */
 
 struct App {
@@ -36,66 +39,148 @@ mut:
 	frame_nb    int
 	last_event  string
 	edit_mode string
+	edit_text string
+	refresh bool
+	sort_name string = "Sorted by name"
 
 	old_actual_path string
 	old_actual_i    int
 	old_edit_mode string
+	old_edit_text string
 
 	chdir_error string
 
 	associated_apps map[string]string 
+	bg_color []u8
+	folder_highlight []u8
 }
 
 fn event(e &tui.Event, x voidptr) {
 	mut app := unsafe { &App(x) }
 	app.chdir_error = ''
 	if e.typ == .key_down {
-		match e.code {
-			.up {
-				if app.dir_list != [] {
-					app.actual_i = if (app.actual_i - 1) == -1 {
-						app.dir_list.len - 1
-					} else {
-						app.actual_i - 1
+		if app.edit_mode == ""{
+			match e.code {
+				.up {
+					if app.dir_list != [] {
+						app.actual_i = if (app.actual_i - 1) == -1 {
+							app.dir_list.len - 1
+						} else {
+							app.actual_i - 1
+						}
+					}
+					app.last_event = 'up'
+				}
+				.down {
+					if app.dir_list != [] {
+						app.actual_i = (app.actual_i + 1) % app.dir_list.len
+					}
+					app.last_event = 'down'
+				}
+				.left {
+					app.actual_path = os.abs_path(os.dir(app.actual_path) + '\\')
+					os.chdir(app.actual_path) or {
+						er('left chdir ${err} ${app.actual_path}')
+						''
+					}
+					app.last_event = 'left'
+				}
+				.right {
+					app.go_in()
+				}
+				.enter {
+					app.go_in()
+				}
+				.n {
+					if e.modifiers.has(.shift) {
+						app.edit_mode = 'Name of the new file:'
+						app.last_event = 'new_file'
+					}else{
+						app.edit_mode = 'Name of the new folder:'
+						app.last_event = 'new_dir'
 					}
 				}
-				app.last_event = 'up'
-			}
-			.down {
-				if app.dir_list != [] {
-					app.actual_i = (app.actual_i + 1) % app.dir_list.len
+				.r {
+					app.update_dir_list()
+					app.actual_i = app.actual_i % app.dir_list.len
+					app.refresh = true
 				}
-				app.last_event = 'down'
-			}
-			.left {
-				app.actual_path = os.abs_path(os.dir(app.actual_path) + '\\')
-				os.chdir(app.actual_path) or {
-					er('left chdir ${err} ${app.actual_path}')
-					''
+				.escape {
+					exit(0)
 				}
-				app.last_event = 'left'
+				else {}
 			}
-			.right {
-				app.go_in()
+		}else{
+			
+			match e.code {
+				.null {}
+				.escape {
+					app.edit_mode = ""
+					app.edit_text = ""
+					app.last_event = "escape edit"
+				}
+				.backspace {
+					if app.edit_text.len > 0{
+						app.edit_text = app.edit_text[0..app.edit_text.len-1]
+					}
+				}
+				.underscore {
+					app.edit_text += "_"
+				}
+				.period {
+					app.edit_text += "."
+				}
+				.comma {
+					app.edit_text += ","
+				}
+				.colon {
+					app.edit_text += ":"
+				}
+				.slash {
+					app.edit_text += "/"
+				}
+				.question_mark {
+					app.edit_text += "?"
+				}
+				.exclamation {
+					app.edit_text += "!"
+				}
+				.minus {
+					app.edit_text += "-"
+				}
+				.space {
+					app.edit_text += "_"
+				}
+				.semicolon {
+					app.edit_text += ";"
+				}
+				.enter {
+					if app.edit_mode == "Name of the new folder:" {
+						os.mkdir(app.actual_path+"\\"+app.edit_text) or {er("mkdir $err")}
+						app.update_dir_list()
+						app.edit_text = ""
+						app.edit_mode = ""
+						app.last_event = "create folder escape edit"
+					}else if app.edit_mode == "Name of the new file:" {
+						mut f := os.create(app.actual_path+"\\"+app.edit_text) or {er("create file $err");os.File{}}
+						f.close()
+						app.update_dir_list()
+						app.edit_text = ""
+						app.edit_mode = ""
+						app.last_event = "create file escape edit"
+					}
+				}
+				else{
+					app.edit_text += e.code.str()				
+				}
 			}
-			.enter {
-				app.go_in()
-			}
-			.n {
-				app.edit_mode = 'Name of the new folder:'
-				app.last_event = 'new_dir'
-			}
-			.escape {
-				exit(0)
-			}
-			else {}
 		}
 	}
 }
 
 fn (mut app App) render() {
 	app.tui.clear()
-	app.tui.set_bg_color(r: 0, g: 0, b: 0)
+	app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 	//app.tui.draw_rect(0, 0, app.tui.window_width, app.tui.window_height)
 	app.tui.set_color(r: 255, g: 255, b: 255) // white font
 
@@ -109,21 +194,22 @@ fn (mut app App) render() {
 			if i + 3 < app.tui.window_height{	
 				if os.is_dir(file) {
 					if i == app.actual_i {
-						app.tui.set_bg_color(r: 63, g: 81, b: 181)
+						app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2
+						])
 						app.tui.draw_text(1, i + 3, '> ${file}')
-						app.tui.set_bg_color(r: 0, g: 0, b: 0)
+						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 					} else {
 						app.tui.draw_text(1, i + 3, '  ${file}')
 					}
 				} else {
 					if encountered_file == -1 {
-						app.tui.set_color(r: 255, g: 255, b: 255)
+						app.tui.set_color(r: 255, g: 255, b: 255) // file font color
 						encountered_file = i
 					}
 					if i == app.actual_i {
 						app.tui.set_bg_color(r: 63, g: 124, b: 181)
 						app.tui.draw_text(1, i + 4, '> ${file}')
-						app.tui.set_bg_color(r: 0, g: 0, b: 0)
+						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 					} else {
 						app.tui.draw_text(1, i + 4, '  ${file}')
 					}
@@ -131,34 +217,30 @@ fn (mut app App) render() {
 			}
 		}
 		if app.dir_list.len == 0 {
-			app.tui.draw_text(0, 3, 'Empty directory')
+			app.tui.draw_text(2, 3, 'Empty directory')
 		} else {
 			if encountered_file != -1 {
 				app.tui.draw_text(1, encountered_file + 3, '-------------------')
 			} else {
 				app.tui.draw_text(1, app.dir_list.len + 3, '-------------------')
 			}
-			app.tui.draw_text(0, app.tui.window_height, '${
-			(if !os.is_dir(app.dir_list[app.actual_i]) {
-				space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'
-			} else {
-				'Directory'
-			}):-15} | Modified the ${(time.date_from_days_after_unix_epoch(int(os.file_last_mod_unix(app.dir_list[app.actual_i])) / 86400).ymmdd()):-15} | ${os.abs_path(app.dir_list[app.actual_i])}')
+			bottom_text := '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${(time.date_from_days_after_unix_epoch(int(os.file_last_mod_unix(app.dir_list[app.actual_i])) / 86400).ymmdd()):-15} | ${os.abs_path(app.dir_list[app.actual_i])}'
+			app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 		}
 	} else {
 		app.tui.draw_text(1, 2, app.chdir_error)
 	}
+	app.tui.set_color(r: 255, g: 255, b: 255)
 
 	// Draw the box around the files
 	app.draw_box(0, 2, app.tui.window_width, app.tui.window_height-1)
+	app.tui.draw_text(3, 2, app.sort_name)
 
 	if app.edit_mode != "" {
 		app.draw_box(app.tui.window_width/2-50, (app.tui.window_height-1)/2-2, app.tui.window_width/2+50, (app.tui.window_height-1)/2+1)
 		app.tui.draw_text(app.tui.window_width/2-49, (app.tui.window_height-1)/2-1, app.edit_mode)
+		app.tui.draw_text(app.tui.window_width/2-49, (app.tui.window_height-1)/2, app.edit_text)
 	}
-
-
-	app.tui.set_bg_color(r: 255, g: 255, b: 255)
 
 	app.tui.set_cursor_position(0, 0)
 
@@ -179,13 +261,19 @@ fn frame(x voidptr) {
 		if app.frame_nb % 360 == 0 {
 		}
 	}
-
+	if app.refresh{
+		ask_render = true
+		app.refresh = false
+	}
 	if app.old_actual_i != app.actual_i {
 		ask_render = true
 		app.old_actual_i = app.actual_i
 	}else if app.old_edit_mode != app.edit_mode{
 		ask_render = true
 		app.old_edit_mode = app.edit_mode
+	}else if app.old_edit_text != app.edit_text{
+		ask_render = true
+		app.old_edit_text = app.edit_text
 	}
 
 	if ask_render {
@@ -196,7 +284,7 @@ fn frame(x voidptr) {
 fn (mut app App) initialisation() {
 	app.tui.set_color(r: 255, g: 255, b: 255)
 	app.update_dir_list()
-	app.tui.set_bg_color(r: 0, g: 0, b: 0)
+	app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 	//app.tui.draw_rect(0, 0, app.tui.window_width, app.tui.window_height)
 }
 
@@ -211,6 +299,8 @@ fn main() {
 			app.associated_apps[elem] = tmp_array[i+1]
 		}
 	}
+	app.bg_color = config.value('bg_color').array().map(u8(it.int()))
+	app.folder_highlight = config.value('folder_highlight').array().map(u8(it.int()))
 
 
 
