@@ -21,7 +21,7 @@ Copier le path de l'elem
 pouvoir mettre des commandes avec racourcis genre G = lazygit avec la possibilité spawn ou pas (donc remplacer le fm genre pour lazygit pdt son utilisation)
 scroll si trop de files
 config : choose your own border chars
-Launch programs (with extention name) (avec truc comme l'autocomplétion sous la barre de recherche)
+Launch programs (with extention name?) (avec truc comme l'autocomplétion sous la barre de recherche)
 launch programs in this folder (pareil mais pour vsc par ex qui en a besoin)
 help shortcuts like ? for ex
 
@@ -30,7 +30,8 @@ Tabs
 appui sur a->z / 0->9 emmène sur le prochain fichier contenant cette lettre
 si ctrl + 1->9  jump au fichier dans x 
 fix le underscore quand on appuie sur un nb à l'edit d'un fichier
-clear crashes
+clear crash logs / no crashes
+config: keybinds
 */
 
 struct App {
@@ -40,8 +41,11 @@ mut:
 	actual_path string = os.abs_path('')
 	actual_i    int
 	dir_list    []string
+	fav_folders []string
 	frame_nb    int
 	last_event  string
+	fav_mode bool
+	fav_index int
 	edit_mode string
 	question_mode string
 	question_answer bool
@@ -55,10 +59,13 @@ mut:
 	old_edit_text string
 	old_question_mode string
 	old_question_answer bool
+	old_fav_mode bool
+	old_fav_index int
 
 	chdir_error string
 
 	associated_apps map[string]string 
+	key_binds map[string]string 
 	bg_color []u8
 	folder_highlight []u8
 	choice_highlight []u8
@@ -113,13 +120,13 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.enter {
 					if app.edit_mode == "Name of the new folder:" {
-						os.mkdir(app.actual_path+"\\"+app.edit_text) or {er("mkdir $err")}
+						os.mkdir(os.join_path_single(app.actual_path, app.edit_text)) or {er("mkdir $err")}
 						app.update_dir_list()
 						app.edit_text = ""
 						app.edit_mode = ""
 						app.last_event = "create folder escape edit"
 					}else if app.edit_mode == "Name of the new file:" {
-						mut f := os.create(app.actual_path+"\\"+app.edit_text) or {er("create file $err");os.File{}}
+						mut f := os.create(os.join_path_single(app.actual_path, app.edit_text)) or {er("create file $err");os.File{}}
 						f.close()
 						app.update_dir_list()
 						app.edit_text = ""
@@ -138,7 +145,7 @@ fn event(e &tui.Event, x voidptr) {
 				.enter {
 					if app.question_answer{
 						if app.question_mode == "Delete this file ?" {
-							os.rm(app.actual_path + "\\" + app.dir_list[app.actual_i]) or {er('rm $err')}
+							os.rm(os.join_path_single(app.actual_path, app.dir_list[app.actual_i])) or {er('rm $err')}
 							app.update_dir_list()
 							if app.dir_list.len > 0{
 								app.actual_i = app.actual_i % app.dir_list.len
@@ -146,7 +153,7 @@ fn event(e &tui.Event, x voidptr) {
 							app.last_event = "deleted a file"
 						}else{
 							if app.question_mode == "Delete this folder ?" {
-								os.rmdir_all(app.actual_path + "\\" + app.dir_list[app.actual_i]) or {er('rmdir_all $err')}
+								os.rmdir_all(os.join_path_single(app.actual_path, app.dir_list[app.actual_i])) or {er('rmdir_all $err')}
 								app.update_dir_list()
 								if app.dir_list.len > 0{
 									app.actual_i = app.actual_i % app.dir_list.len
@@ -163,6 +170,43 @@ fn event(e &tui.Event, x voidptr) {
 					app.question_mode = ""
 					app.question_answer = false
 					app.last_event = "escape question"
+				}
+				else{}
+			}
+		} else if app.fav_mode{
+			match e.code {
+				.escape {
+					app.fav_index = 0
+					app.fav_mode = false
+				}
+				.up {
+					if app.fav_folders != [] {
+						app.fav_index = if (app.fav_index - 1) == -1 {
+								app.fav_folders.len - 1
+							} else {
+								app.fav_index - 1
+							}
+					}
+					app.last_event = 'fav up'
+				}
+				.down {
+					if app.fav_folders != [] {
+						app.fav_index = (app.fav_index + 1) % app.fav_folders.len
+					}
+					app.last_event = 'fav down'
+				}
+				.enter {
+					app.fav_index = 0
+					app.actual_path = app.fav_folders[app.fav_index]
+					app.fav_mode = false
+					os.chdir(app.actual_path) or {
+						er('go in fav ${err}')
+						app.chdir_error = '${err}'
+					}
+					app.update_dir_list()
+					if app.dir_list.len > 0{
+						app.actual_i = app.actual_i % app.dir_list.len
+					}
 				}
 				else{}
 			}
@@ -228,7 +272,18 @@ fn event(e &tui.Event, x voidptr) {
 				.escape {
 					exit(0)
 				}
-				else {}
+				.q {
+					exit(0)
+				}
+				.f {
+					app.fav_mode = true
+				}
+				else {
+					if e.code.str() in app.key_binds {
+						spawn os.execute(app.key_binds[e.code.str()])
+						app.refresh = true
+					}
+				}
 			}
 		}
 		
@@ -313,6 +368,18 @@ fn (mut app App) render() {
 		}
 		app.tui.draw_text(app.tui.window_width/2, (app.tui.window_height-1)/2, "Yes")
 		app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
+	}else if app.fav_mode {
+		app.draw_box(app.tui.window_width/2-30, (app.tui.window_height-1)/2-10, app.tui.window_width/2+30, (app.tui.window_height-1)/2+10)
+		app.tui.draw_text(app.tui.window_width/2-28, (app.tui.window_height-1)/2-10, "Favorites")
+		for i, fav in app.fav_folders {
+			if app.fav_index == i {
+				app.tui.set_bg_color(r: 45, g: 45, b: 45)
+			}
+			app.tui.draw_text(app.tui.window_width/2-28, (app.tui.window_height-1)/2-9+i, fav)
+			if app.fav_index == i {
+				app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
+			}
+		}
 	}
 
 	app.tui.set_cursor_position(0, 0)
@@ -353,6 +420,12 @@ fn frame(x voidptr) {
 	}else if app.old_question_mode != app.question_mode{
 		ask_render = true
 		app.old_question_mode = app.question_mode
+	}else if app.old_fav_mode != app.fav_mode {
+		ask_render = true
+		app.old_fav_mode = app.fav_mode
+	}else if app.old_fav_index != app.fav_index {
+		ask_render = true
+		app.old_fav_index = app.fav_index
 	}
 
 	if ask_render {
@@ -370,11 +443,10 @@ fn (mut app App) initialisation() {
 fn main() {
 	println(start_path)
 	mut app := &App{}
-
-	config := toml.parse_file("config.toml") or {er("Config file error $err"); toml.Doc{}}
+	config := toml.parse_file("config.toml") or {er("Config file error $err"); println("juujuj"); toml.Doc{}}
 	if config.value('exts_n_paths') == toml.Any(toml.Null{}) {
 		er("read config file error")
-	}
+	}	
 
 	tmp_array := config.value('exts_n_paths').array().map(it.string())
 	for i, elem in tmp_array{
@@ -382,10 +454,19 @@ fn main() {
 			app.associated_apps[elem] = tmp_array[i+1]
 		}
 	}
+	app.fav_folders = config.value('favorite_folders').array().map(it.string())
 	app.bg_color = config.value('bg_color').array().map(u8(it.int()))
 	app.folder_highlight = config.value('folder_highlight').array().map(u8(it.int()))
 	app.choice_highlight = config.value('choice_highlight').array().map(u8(it.int()))
 
+	tmp_keybinds := config.value('keybinds').array().map(it.array())
+	mut keybinds := [][]string{}
+	for elem in tmp_keybinds {
+		keybinds << elem.map(it.string())
+	}
+	for pair in keybinds {
+		app.key_binds[pair[0]] = pair[1]
+	}
 
 
 	// os.ls()
@@ -394,6 +475,7 @@ fn main() {
 	// os.is_dir_empty()
 	// os.is_file()
 	/*
+	os.file_name(opath string) string
 	os.file_ext(app.dir_list[app.actual_i])
 	fn chdir(path string) !
 chdir changes the current working directory to the new directory in path.

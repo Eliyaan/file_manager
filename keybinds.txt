@@ -1,5 +1,4 @@
-Normal browsing mode
-left -> go back
+left -> go back to previous dir
 right/enter -> go in (open/go in dir)
 up/down -> move the cusros
 n -> new file
@@ -8,4 +7,5 @@ suppr -> delete file
 shift + suppr -> delete folder 
 (press enter to choose an option)
 r -> reload the display
-esc -> quit the app/current gui
+esc/q -> quit the app
+esc -> quit current gui

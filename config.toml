@@ -6,8 +6,14 @@ exts_n_paths = [
 	'.exe', 'start ',
 	'else', 'start " "',
 ]
-
+favorite_folders = [
+	'C:/Users/PACHECON/_cv',
+	'C:/Users/PACHECON/Apps',
+	'C:/Users/PACHECON/godot',
+	'C:/Users/PACHECON/v'
+]
 
 bg_color = [20, 10, 10]
 folder_highlight = [163, 81, 181]
 choice_highlight = [63, 81, 181]
+keybinds = [['g', 'lazygit'], ['c', '"C:/Users/PACHECON/Apps/vscodium/VSCodium.exe" .']]
