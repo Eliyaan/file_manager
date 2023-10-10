@@ -14,7 +14,6 @@ TODO :
 Protected files
 
 FUN - config : colors
-Favorites files
 Copier les fichiers/dossiers
 Copier le path
 Copier le path de l'elem
@@ -32,6 +31,7 @@ si ctrl + 1->9  jump au fichier dans x
 fix le underscore quand on appuie sur un nb à l'edit d'un fichier
 clear crash logs / no crashes
 config: keybinds
+add/suppr with short cut Favorites files
 */
 
 struct App {
@@ -69,6 +69,9 @@ mut:
 	bg_color []u8
 	folder_highlight []u8
 	choice_highlight []u8
+	folder_font []u8
+	file_highlight []u8
+	fav_highlight []u8
 }
 
 fn event(e &tui.Event, x voidptr) {
@@ -196,8 +199,8 @@ fn event(e &tui.Event, x voidptr) {
 					app.last_event = 'fav down'
 				}
 				.enter {
-					app.fav_index = 0
 					app.actual_path = app.fav_folders[app.fav_index]
+					app.fav_index = 0
 					app.fav_mode = false
 					os.chdir(app.actual_path) or {
 						er('go in fav ${err}')
@@ -301,15 +304,14 @@ fn (mut app App) render() {
 	
 	app.tui.draw_text(0, 0, '${app.actual_path}')
 	// Draw the files
-	app.tui.set_color(r: 186, g: 222, b: 255) // color for dirs
+	app.tui.set_color(r: app.folder_font[0], g: app.folder_font[1], b: app.folder_font[2]) // color for dirs
 	mut encountered_file := -1
 	if app.chdir_error == '' {
 		for i, file in app.dir_list {
 			if i + 3 < app.tui.window_height{	
 				if os.is_dir(file) {
 					if i == app.actual_i {
-						app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2
-						])
+						app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2])
 						app.tui.draw_text(1, i + 3, '> ${file}')
 						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 					} else {
@@ -321,7 +323,7 @@ fn (mut app App) render() {
 						encountered_file = i
 					}
 					if i == app.actual_i {
-						app.tui.set_bg_color(r: 63, g: 124, b: 181)
+						app.tui.set_bg_color(r: app.file_highlight[0], g: app.file_highlight[1], b: app.file_highlight[2])
 						app.tui.draw_text(1, i + 4, '> ${file}')
 						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 					} else {
@@ -373,7 +375,7 @@ fn (mut app App) render() {
 		app.tui.draw_text(app.tui.window_width/2-28, (app.tui.window_height-1)/2-10, "Favorites")
 		for i, fav in app.fav_folders {
 			if app.fav_index == i {
-				app.tui.set_bg_color(r: 45, g: 45, b: 45)
+				app.tui.set_bg_color(r: app.fav_highlight[0], g: app.fav_highlight[1], b: app.fav_highlight[2])
 			}
 			app.tui.draw_text(app.tui.window_width/2-28, (app.tui.window_height-1)/2-9+i, fav)
 			if app.fav_index == i {
@@ -458,6 +460,9 @@ fn main() {
 	app.bg_color = config.value('bg_color').array().map(u8(it.int()))
 	app.folder_highlight = config.value('folder_highlight').array().map(u8(it.int()))
 	app.choice_highlight = config.value('choice_highlight').array().map(u8(it.int()))
+	app.folder_font = config.value('folder_font').array().map(u8(it.int()))
+	app.file_highlight = config.value('file_highlight').array().map(u8(it.int()))
+	app.fav_highlight = config.value('fav_highlight').array().map(u8(it.int()))
 
 	tmp_keybinds := config.value('keybinds').array().map(it.array())
 	mut keybinds := [][]string{}
