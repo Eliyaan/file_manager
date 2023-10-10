@@ -12,6 +12,7 @@ const (
 /*
 TODO :
 Protected files
+modified hour
 
 FUN - config : colors
 Copier les fichiers/dossiers
