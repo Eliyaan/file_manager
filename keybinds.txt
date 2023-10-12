@@ -9,3 +9,5 @@ shift + suppr -> delete folder
 r -> reload the display
 esc/q -> quit the app
 esc -> quit current gui
+f -> favorites dirs
+c -> open the field to enter and execute a command

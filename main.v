@@ -11,28 +11,30 @@ const (
 
 /*
 TODO :
-Protected files
-modified hour
++ Copier les fichiers/dossiers
++ couper
++ multiple file selection 
++ scroll si trop de files / trop de chars dans l'input
 
-FUN - config : colors
-Copier les fichiers/dossiers
-Copier le path
-Copier le path de l'elem
-pouvoir mettre des commandes avec racourcis genre G = lazygit avec la possibilité spawn ou pas (donc remplacer le fm genre pour lazygit pdt son utilisation)
-scroll si trop de files
-config : choose your own border chars
-Launch programs (with extention name?) (avec truc comme l'autocomplétion sous la barre de recherche)
-launch programs in this folder (pareil mais pour vsc par ex qui en a besoin)
-help shortcuts like ? for ex
+. Copier le path
+. Copier le path de l'elem
+. help shortcuts like ? for ex
+. Tabs
+. appui sur a->z / 0->9 emmène sur le prochain fichier contenant cette lettre
+. si ctrl + 1->9  jump au fichier dans x 
+. search bar
+. add/suppr with short cut Favorites files
 
-find a way to redraw only the modified things (will enable the full custom bg)
-Tabs
-appui sur a->z / 0->9 emmène sur le prochain fichier contenant cette lettre
-si ctrl + 1->9  jump au fichier dans x 
-fix le underscore quand on appuie sur un nb à l'edit d'un fichier
-clear crash logs / no crashes
-config: keybinds
-add/suppr with short cut Favorites files
+- config : colors
+- zip
+- config : choose your own border chars
+- Launch programs (with extention name?) (avec truc comme l'autocomplétion sous la barre de recherche)
+- favorite commands
+- find a way to redraw only the modified things (will enable the full custom bg)
+- clearer crash logs / no crashes of the app (but fails yeah)
+- diff algo tri
+
+? Protected files
 */
 
 struct App {
@@ -53,6 +55,9 @@ mut:
 	edit_text string
 	refresh bool
 	sort_name string = "Sorted by name"
+	copy_path string
+	cmd_mode bool
+	cmd_text string
 
 	old_actual_path string
 	old_actual_i    int
@@ -62,6 +67,8 @@ mut:
 	old_question_answer bool
 	old_fav_mode bool
 	old_fav_index int
+	old_cmd_mode bool
+	old_cmd_text string
 
 	chdir_error string
 
@@ -92,36 +99,6 @@ fn event(e &tui.Event, x voidptr) {
 						app.edit_text = app.edit_text[0..app.edit_text.len-1]
 					}
 				}
-				.underscore {
-					app.edit_text += "_"
-				}
-				.period {
-					app.edit_text += "."
-				}
-				.comma {
-					app.edit_text += ","
-				}
-				.colon {
-					app.edit_text += ":"
-				}
-				.slash {
-					app.edit_text += "/"
-				}
-				.question_mark {
-					app.edit_text += "?"
-				}
-				.exclamation {
-					app.edit_text += "!"
-				}
-				.minus {
-					app.edit_text += "-"
-				}
-				.space {
-					app.edit_text += "_"
-				}
-				.semicolon {
-					app.edit_text += ";"
-				}
 				.enter {
 					if app.edit_mode == "Name of the new folder:" {
 						os.mkdir(os.join_path_single(app.actual_path, app.edit_text)) or {er("mkdir $err")}
@@ -139,7 +116,7 @@ fn event(e &tui.Event, x voidptr) {
 					}
 				}
 				else{
-					app.edit_text += e.code.str()				
+					app.edit_text += key_str(e.code)
 				}
 			}
 		} else if app.question_mode != "" {			
@@ -214,8 +191,42 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				else{}
 			}
+		} else if app.cmd_mode {
+			match e.code {
+				.escape {
+					app.cmd_mode = false
+				}
+				.enter {
+					spawn os.execute(app.cmd_text)
+					app.cmd_mode = false
+				}
+				.backspace {
+					if app.cmd_text.len > 0{
+						app.cmd_text = app.cmd_text[0..app.cmd_text.len-1]
+					}
+				}
+				else {app.cmd_text += key_str(e.code)}
+			}
 		} else {
 			match e.code {
+				.c  {
+					if e.modifiers.has(.ctrl){
+						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
+					}else {
+						app.cmd_mode = true
+						app.cmd_text = ""
+					}
+				}
+				.v  {
+					if e.modifiers.has(.ctrl){
+						os.cp(app.copy_path, app.actual_path) or {er("paste $err")}
+						app.update_dir_list()
+						if app.dir_list.len > 0{
+							app.actual_i = app.actual_i % app.dir_list.len
+						}
+						app.refresh = true
+					}
+				}
 				.up {
 					if app.dir_list != [] {
 						app.actual_i = if (app.actual_i - 1) == -1 {
@@ -341,7 +352,8 @@ fn (mut app App) render() {
 			} else {
 				app.tui.draw_text(1, app.dir_list.len + 3, '-------------------')
 			}
-			bottom_text := '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${(time.date_from_days_after_unix_epoch(int(os.file_last_mod_unix(app.dir_list[app.actual_i])) / 86400).ymmdd()):-15} | ${os.abs_path(app.dir_list[app.actual_i])}'
+			date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.dir_list[app.actual_i])))
+			bottom_text := '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.dir_list[app.actual_i])}'
 			app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 		}
 	} else {
@@ -383,6 +395,10 @@ fn (mut app App) render() {
 				app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 			}
 		}
+	} else if app.cmd_mode {
+		app.draw_box(app.tui.window_width/10, (app.tui.window_height-1)/2-1, app.tui.window_width*9/10, (app.tui.window_height-1)/2+1)
+		app.tui.draw_text(app.tui.window_width/10+2, (app.tui.window_height-1)/2-1, "Enter your command")
+		app.tui.draw_text(app.tui.window_width/10+2, (app.tui.window_height-1)/2, "> $app.cmd_text")
 	}
 
 	app.tui.set_cursor_position(0, 0)
@@ -429,6 +445,12 @@ fn frame(x voidptr) {
 	}else if app.old_fav_index != app.fav_index {
 		ask_render = true
 		app.old_fav_index = app.fav_index
+	}else if app.old_cmd_mode != app.cmd_mode {
+		ask_render = true
+		app.old_cmd_mode = app.cmd_mode
+	}else if app.old_cmd_text != app.cmd_text {
+		ask_render = true
+		app.old_cmd_text = app.cmd_text
 	}
 
 	if ask_render {
