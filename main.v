@@ -11,8 +11,6 @@ const (
 
 /*
 TODO :
-+ Copier les fichiers/dossiers
-+ couper
 + multiple file selection 
 + scroll si trop de files / trop de chars dans l'input
 
@@ -56,6 +54,7 @@ mut:
 	refresh bool
 	sort_name string = "Sorted by name"
 	copy_path string
+	cut_mode bool
 	cmd_mode bool
 	cmd_text string
 
@@ -212,6 +211,18 @@ fn event(e &tui.Event, x voidptr) {
 				.c  {
 					if e.modifiers.has(.ctrl){
 						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
+						app.refresh = true
+						app.cut_mode = false
+					}else {
+						app.cmd_mode = true
+						app.cmd_text = ""
+					}
+				}
+				.x  {
+					if e.modifiers.has(.ctrl){
+						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
+						app.refresh = true
+						app.cut_mode = true
 					}else {
 						app.cmd_mode = true
 						app.cmd_text = ""
@@ -219,7 +230,23 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.v  {
 					if e.modifiers.has(.ctrl){
-						os.cp(app.copy_path, app.actual_path) or {er("paste $err")}
+						if app.cut_mode {
+							os.mv(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path)) or {er("cut paste file $err")}
+						}else{
+							if e.modifiers.has(.shift){
+								if !os.is_dir(app.copy_path){
+									os.cp(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path)) or {er("copy paste file $err")}
+								}else{
+									os.cp_all(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path), true) or {er("copy paste dir $err")}
+								}
+							}else{
+								if !os.is_dir(app.copy_path){
+									os.cp(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path)) or {er("copy paste file $err")}
+								}else{
+									os.cp_all(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path), false) or {er("copy paste dir $err")}
+								}
+							}
+						}
 						app.update_dir_list()
 						if app.dir_list.len > 0{
 							app.actual_i = app.actual_i % app.dir_list.len
@@ -315,6 +342,7 @@ fn (mut app App) render() {
 
 	
 	app.tui.draw_text(0, 0, '${app.actual_path}')
+	app.tui.draw_text(app.tui.window_width-app.copy_path.len-12, 0, 'Clipboard : ${app.copy_path}')
 	// Draw the files
 	app.tui.set_color(r: app.folder_font[0], g: app.folder_font[1], b: app.folder_font[2]) // color for dirs
 	mut encountered_file := -1
