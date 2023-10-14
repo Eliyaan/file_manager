@@ -13,7 +13,6 @@ const (
 ask about -prof and -prod for  term.ui
 TODO :
 + scroll si trop de files / trop de chars dans l'input
-+ search bar
 + help shortcuts like ? for ex
 + add/suppr with short cut Favorites files
 
@@ -26,6 +25,8 @@ TODO :
 . Tabs
 . si ctrl + 1->9  jump au fichier dans x 
 
+- copy name of elem
+- title
 - config : colors
 - zip
 - config : choose your own border chars
@@ -284,9 +285,11 @@ fn event(e &tui.Event, x voidptr) {
 						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
 						app.refresh = true
 						app.cut_mode = false
+						app.last_event = 'copy'
 					}else {
 						app.cmd_mode = true
 						app.cmd_text = ""
+						app.last_event = 'cmd mode'
 					}
 				}
 				.x  {
@@ -294,9 +297,7 @@ fn event(e &tui.Event, x voidptr) {
 						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
 						app.refresh = true
 						app.cut_mode = true
-					}else {
-						app.cmd_mode = true
-						app.cmd_text = ""
+						app.last_event = 'cut'
 					}
 				}
 				.v  {
@@ -319,6 +320,7 @@ fn event(e &tui.Event, x voidptr) {
 							app.actual_i = app.actual_i % app.dir_list.len
 						}
 						app.refresh = true
+						app.last_event = 'paste'
 					}
 				}
 				.up {
@@ -366,6 +368,7 @@ fn event(e &tui.Event, x voidptr) {
 						app.actual_i = app.actual_i % app.dir_list.len
 					}
 					app.refresh = true
+					app.last_event = 'refresh'
 				}
 				.delete {
 					if app.dir_list != [] {
@@ -376,6 +379,7 @@ fn event(e &tui.Event, x voidptr) {
 								app.question_mode = "Delete this folder ?"
 							}
 						}
+						app.last_event = 'delete'
 					}
 				}
 				.escape {
@@ -386,15 +390,18 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.f {
 					app.fav_mode = true
+					app.last_event = 'fav mode'
 				}
 				.space {
 					app.search_mode = true
 					app.search_text = ""
+					app.last_event = 'search mode'
 				}
 				else {
 					if e.code.str() in app.key_binds {
 						spawn os.execute(app.key_binds[e.code.str()])
 						app.refresh = true
+						app.last_event = 'exec'
 					}
 				}
 			}
