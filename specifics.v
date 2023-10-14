@@ -17,7 +17,7 @@ fn (mut app App) go_in() {
 		} else {
 			file_ext := os.file_ext(app.dir_list[app.actual_i])
 			if file_ext in app.associated_apps{
-				spawn os.execute('${app.associated_apps[os.file_ext(app.dir_list[app.actual_i])]} \"${app.actual_path + '/' + app.dir_list[app.actual_i]}\"')
+				spawn os.execute('${app.associated_apps[file_ext]} \"${app.actual_path + '/' + app.dir_list[app.actual_i]}\"')
 			}else{
 				spawn os.execute('${app.associated_apps["else"]} \"${app.actual_path + '/' + app.dir_list[app.actual_i]}\"')
 			}
@@ -67,4 +67,36 @@ fn (mut app App) draw_box(start_x int, start_y int, finish_x int, finish_y int) 
 	app.tui.draw_text(start_x, finish_y, "\u2570${x_bar}\u256F")
 	//Debug:
 	//app.tui.draw_text(if start_x != 0 {start_x+1} else {start_x+2}, finish_y-1, "$start_x, $start_y, $finish_x, $finish_y")
+}
+
+fn (mut app App) draw_bar(start_x int, start_y int, finish_x int) {
+	mut x_bar := ""
+	for _ in start_x+1..finish_x-1{
+		x_bar += '\u2500' // u2500 https://www.utf8-chartable.de/unicode-utf8-table.pl
+	}
+	app.tui.draw_text(start_x, start_y, "\u251C${x_bar}\u2524")
+}
+
+[direct_array_access]
+fn search(search_text string, actual_path string) []string{
+	mut output := []string{}
+	mut path := ""
+	mut next_dirs := []string{cap:100}
+	next_dirs << actual_path
+	for next_dirs.len > 0{
+		path = next_dirs.pop()
+		for elem in os.ls(path) or {er("search $err"); []string{}}{
+			if os.is_dir(path+'\\'+elem) {
+				next_dirs << path+'\\'+elem
+				if elem.contains(search_text){
+					output << path+'\\'+elem
+				}
+			}else{
+				if elem.contains(search_text){
+					output << path+'\\'+elem
+				}
+			}
+		}
+	}
+	return output
 }

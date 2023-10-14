@@ -10,18 +10,21 @@ const (
 )
 
 /*
+ask about -prof and -prod for  term.ui
 TODO :
-+ multiple file selection 
 + scroll si trop de files / trop de chars dans l'input
++ search bar
++ help shortcuts like ? for ex
++ add/suppr with short cut Favorites files
 
+. rename
+. lettre en majuscucules
+. apparition dans un dossier choisi
+. multiple file selection 
 . Copier le path
 . Copier le path de l'elem
-. help shortcuts like ? for ex
 . Tabs
-. appui sur a->z / 0->9 emmène sur le prochain fichier contenant cette lettre
 . si ctrl + 1->9  jump au fichier dans x 
-. search bar
-. add/suppr with short cut Favorites files
 
 - config : colors
 - zip
@@ -33,6 +36,7 @@ TODO :
 - diff algo tri
 
 ? Protected files
+? appui sur a->z / 0->9 emmène sur le prochain fichier contenant cette lettre
 */
 
 struct App {
@@ -57,6 +61,11 @@ mut:
 	cut_mode bool
 	cmd_mode bool
 	cmd_text string
+	search_mode bool
+	search_text string
+	search_results []string
+	search_i int = -1
+	search_success bool
 
 	old_actual_path string
 	old_actual_i    int
@@ -68,6 +77,9 @@ mut:
 	old_fav_index int
 	old_cmd_mode bool
 	old_cmd_text string
+	old_search_mode bool
+	old_search_text string
+	old_search_i int
 
 	chdir_error string
 
@@ -79,6 +91,7 @@ mut:
 	folder_font []u8
 	file_highlight []u8
 	fav_highlight []u8
+	search_highlight []u8
 }
 
 fn event(e &tui.Event, x voidptr) {
@@ -155,6 +168,10 @@ fn event(e &tui.Event, x voidptr) {
 			}
 		} else if app.fav_mode{
 			match e.code {
+				.f {
+					app.fav_index = 0
+					app.fav_mode = false
+				}
 				.escape {
 					app.fav_index = 0
 					app.fav_mode = false
@@ -206,6 +223,60 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				else {app.cmd_text += key_str(e.code)}
 			}
+		} else if app.search_mode {
+			match e.code {
+				.escape {
+					app.search_mode = false
+					app.search_results = []
+					app.search_success = false
+				}
+				.enter {
+					if app.search_i == -1{
+						app.search_results = search(app.search_text, app.actual_path)
+						app.search_success = true
+						er(app.search_results.str())
+						app.refresh = true
+					}else{
+						if os.is_dir(app.search_results[app.search_i]) {
+							app.actual_path = app.search_results[app.search_i]
+							os.chdir(app.actual_path) or {
+								er('go to w/ search ${err}')
+								app.chdir_error = '${err}'
+							}
+							app.search_mode = false
+							app.search_results = []
+							er("werk")
+						} else {
+							file_ext := os.file_ext(app.search_results[app.search_i])
+							if file_ext in app.associated_apps{
+								spawn os.execute('${app.associated_apps[file_ext]} \"${app.search_results[app.search_i]}\"')
+							}else{
+								spawn os.execute('${app.associated_apps["else"]} \"${app.search_results[app.search_i]}\"')
+							}
+						}
+					}
+				}
+				.backspace {
+					if app.search_text.len > 0{
+						app.search_text = app.search_text[0..app.search_text.len-1]
+					}
+				}
+				.up {
+					if app.search_results != [] {
+						app.search_i = if (app.search_i - 1) <= -1 {
+							app.search_results.len - 1
+						} else {
+							app.search_i - 1
+						}
+					}
+				}
+				.down {
+					if app.search_results != [] {
+						app.search_i = (app.search_i + 1) % app.search_results.len
+					}
+				}
+				else {app.search_text += key_str(e.code); app.search_i = -1}
+			}
 		} else {
 			match e.code {
 				.c  {
@@ -234,11 +305,7 @@ fn event(e &tui.Event, x voidptr) {
 							os.mv(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path)) or {er("cut paste file $err")}
 						}else{
 							if e.modifiers.has(.shift){
-								if !os.is_dir(app.copy_path){
-									os.cp(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path)) or {er("copy paste file $err")}
-								}else{
-									os.cp_all(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path), true) or {er("copy paste dir $err")}
-								}
+								os.cp_all(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path), true) or {er("copy paste overwrite $err")}
 							}else{
 								if !os.is_dir(app.copy_path){
 									os.cp(app.copy_path, app.actual_path+"\\"+os.file_name(app.copy_path)) or {er("copy paste file $err")}
@@ -320,6 +387,10 @@ fn event(e &tui.Event, x voidptr) {
 				.f {
 					app.fav_mode = true
 				}
+				.space {
+					app.search_mode = true
+					app.search_text = ""
+				}
 				else {
 					if e.code.str() in app.key_binds {
 						spawn os.execute(app.key_binds[e.code.str()])
@@ -380,9 +451,15 @@ fn (mut app App) render() {
 			} else {
 				app.tui.draw_text(1, app.dir_list.len + 3, '-------------------')
 			}
-			date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.dir_list[app.actual_i])))
-			bottom_text := '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.dir_list[app.actual_i])}'
-			app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
+			if app.search_results != [] && app.search_i != -1 {
+				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.search_results[app.search_i])))
+				bottom_text := '${(if !os.is_dir(app.search_results[app.search_i]) {space_nb(os.file_size(app.search_results[app.search_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.search_results[app.search_i])}'
+				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
+			}else{
+				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.dir_list[app.actual_i])))
+				bottom_text := '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.dir_list[app.actual_i])}'
+				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
+			}
 		}
 	} else {
 		app.tui.draw_text(1, 2, app.chdir_error)
@@ -427,6 +504,44 @@ fn (mut app App) render() {
 		app.draw_box(app.tui.window_width/10, (app.tui.window_height-1)/2-1, app.tui.window_width*9/10, (app.tui.window_height-1)/2+1)
 		app.tui.draw_text(app.tui.window_width/10+2, (app.tui.window_height-1)/2-1, "Enter your command")
 		app.tui.draw_text(app.tui.window_width/10+2, (app.tui.window_height-1)/2, "> $app.cmd_text")
+	} else if app.search_mode {
+		if app.search_results != [] {
+			if app.search_results.len + 8 + 5 > app.tui.window_height {
+				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, app.tui.window_height-4)
+				app.draw_bar(app.tui.window_width/10, 7, app.tui.window_width*9/10)
+				for i, result in app.search_results[0..app.tui.window_height-8-4] {
+					if i == app.search_i{
+						app.tui.set_bg_color(r: app.search_highlight[0], g: app.search_highlight[1], b: app.search_highlight[2])
+					}
+					app.tui.draw_text(app.tui.window_width/10+1, 8+i, "> ${result[app.actual_path.len..]}")
+					if i == app.search_i{
+						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
+					}
+				}
+			} else {
+				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, 7+app.search_results.len+1)
+				app.draw_bar(app.tui.window_width/10, 7, app.tui.window_width*9/10)
+				for i, result in app.search_results {
+					if i == app.search_i{
+						app.tui.set_bg_color(r: app.search_highlight[0], g: app.search_highlight[1], b: app.search_highlight[2])
+					}
+					app.tui.draw_text(app.tui.window_width/10+1, 8+i, "> ${result[app.actual_path.len..]}")
+					if i == app.search_i{
+						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
+					}
+				}
+			}
+		}else {
+			if app.search_success{
+				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, 7+1+1)
+				app.draw_bar(app.tui.window_width/10, 7, app.tui.window_width*9/10)
+				app.tui.draw_text(app.tui.window_width/10+2, 8, " No results")
+			}else{
+				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, 7)
+			}
+		}
+		app.tui.draw_text(app.tui.window_width/10+2, 5, "Search")
+		app.tui.draw_text(app.tui.window_width/10+3, 6, "${app.search_text}")
 	}
 
 	app.tui.set_cursor_position(0, 0)
@@ -479,6 +594,15 @@ fn frame(x voidptr) {
 	}else if app.old_cmd_text != app.cmd_text {
 		ask_render = true
 		app.old_cmd_text = app.cmd_text
+	}else if app.old_search_mode != app.search_mode {
+		ask_render = true
+		app.old_search_mode = app.search_mode
+	}else if app.old_search_text != app.search_text {
+		ask_render = true
+		app.old_search_text = app.search_text
+	}else if app.old_search_i != app.search_i {
+		ask_render = true
+		app.old_search_i = app.search_i
 	}
 
 	if ask_render {
@@ -514,6 +638,7 @@ fn main() {
 	app.folder_font = config.value('folder_font').array().map(u8(it.int()))
 	app.file_highlight = config.value('file_highlight').array().map(u8(it.int()))
 	app.fav_highlight = config.value('fav_highlight').array().map(u8(it.int()))
+	app.search_highlight = config.value('search_highlight').array().map(u8(it.int()))
 
 	tmp_keybinds := config.value('keybinds').array().map(it.array())
 	mut keybinds := [][]string{}

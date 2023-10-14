@@ -20,6 +20,7 @@ fn space_nb(nb string) string {
 
 fn key_str(code tui.KeyCode) string {
 	return match code {
+		.null {""}
 		.underscore {
 			 "_"
 		}
