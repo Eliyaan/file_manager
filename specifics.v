@@ -82,7 +82,7 @@ fn search(search_text string, actual_path string) []string{
 	mut output := []string{}
 	mut path := ""
 	mut next_dirs := []string{cap:100}
-	next_dirs << actual_path
+	next_dirs << actual_path.replace('/', '\\')
 	for next_dirs.len > 0{
 		path = next_dirs.pop()
 		for elem in os.ls(path) or {er("search $err"); []string{}}{

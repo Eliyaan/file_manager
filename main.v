@@ -17,6 +17,7 @@ TODO :
 + add/suppr with short cut Favorites files
 
 . rename
+.ù 
 . lettre en majuscucules
 . apparition dans un dossier choisi
 . multiple file selection 
@@ -24,9 +25,11 @@ TODO :
 . Copier le path de l'elem
 . Tabs
 . si ctrl + 1->9  jump au fichier dans x 
+. access any parameter of config.toml in the tui (with interfaces)
 
+- opti search -> multithreading ?
 - copy name of elem
-- title
+- title of the window
 - config : colors
 - zip
 - config : choose your own border chars
@@ -46,6 +49,7 @@ mut:
 
 	actual_path string = os.abs_path('')
 	actual_i    int
+	actual_scroll int
 	dir_list    []string
 	fav_folders []string
 	frame_nb    int
@@ -67,6 +71,7 @@ mut:
 	search_results []string
 	search_i int = -1
 	search_success bool
+	search_time f64
 
 	old_actual_path string
 	old_actual_i    int
@@ -214,7 +219,8 @@ fn event(e &tui.Event, x voidptr) {
 					app.cmd_mode = false
 				}
 				.enter {
-					spawn os.execute(app.cmd_text)
+					spawn os.execute("start cmd /c" + app.cmd_text)
+					er('ooo')
 					app.cmd_mode = false
 				}
 				.backspace {
@@ -230,12 +236,14 @@ fn event(e &tui.Event, x voidptr) {
 					app.search_mode = false
 					app.search_results = []
 					app.search_success = false
+					app.search_time = 0.0
 				}
 				.enter {
 					if app.search_i == -1{
+						sw := time.new_stopwatch()
 						app.search_results = search(app.search_text, app.actual_path)
+						app.search_time = sw.elapsed().seconds()
 						app.search_success = true
-						er(app.search_results.str())
 						app.refresh = true
 					}else{
 						if os.is_dir(app.search_results[app.search_i]) {
@@ -246,6 +254,7 @@ fn event(e &tui.Event, x voidptr) {
 							}
 							app.search_mode = false
 							app.search_results = []
+							app.search_time = 0.0
 							er("werk")
 						} else {
 							file_ext := os.file_ext(app.search_results[app.search_i])
@@ -325,10 +334,20 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.up {
 					if app.dir_list != [] {
-						app.actual_i = if (app.actual_i - 1) == -1 {
-							app.dir_list.len - 1
+						if (app.actual_i - 1) == -1 {
+							app.actual_i = app.dir_list.len - 1
+							if app.dir_list.len > app.tui.window_height - 5 {
+								app.actual_scroll = -app.tui.window_height + 8 + app.actual_i
+							}
 						} else {
-							app.actual_i - 1
+							app.actual_i = app.actual_i - 1
+						}
+						if app.dir_list.len > app.tui.window_height - 5 {
+							if app.actual_i - 3 < app.actual_scroll  {
+								if app.actual_scroll > 0 {
+									app.actual_scroll -= 1
+								}
+							}
 						}
 					}
 					app.last_event = 'up'
@@ -336,6 +355,15 @@ fn event(e &tui.Event, x voidptr) {
 				.down {
 					if app.dir_list != [] {
 						app.actual_i = (app.actual_i + 1) % app.dir_list.len
+						if app.dir_list.len > app.tui.window_height - 5 {
+							if app.actual_i - app.actual_scroll > app.tui.window_height - 8 {
+								app.actual_scroll = -app.tui.window_height + 8 + app.actual_i
+							} else {
+								if app.actual_i == 0 {
+									app.actual_scroll = 0
+								}
+							}
+						}
 					}
 					app.last_event = 'down'
 				}
@@ -349,9 +377,11 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.right {
 					app.go_in()
+					app.actual_scroll = 0
 				}
 				.enter {
 					app.go_in()
+					app.actual_scroll = 0
 				}
 				.n {
 					if !e.modifiers.has(.shift) {
@@ -423,29 +453,30 @@ fn (mut app App) render() {
 	app.tui.draw_text(app.tui.window_width-app.copy_path.len-12, 0, 'Clipboard : ${app.copy_path}')
 	// Draw the files
 	app.tui.set_color(r: app.folder_font[0], g: app.folder_font[1], b: app.folder_font[2]) // color for dirs
-	mut encountered_file := -1
+	mut encountered_file := false
 	if app.chdir_error == '' {
 		for i, file in app.dir_list {
-			if i + 3 < app.tui.window_height{	
-				if os.is_dir(file) {
+			if i - app.actual_scroll < app.tui.window_height && i - app.actual_scroll >= 0 {	
+				pos := -app.actual_scroll + i + 3
+ 				if os.is_dir(file) {
 					if i == app.actual_i {
 						app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2])
-						app.tui.draw_text(1, i + 3, '> ${file}')
+						app.tui.draw_text(1, pos, '> ${file}')
 						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 					} else {
-						app.tui.draw_text(1, i + 3, '  ${file}')
+						app.tui.draw_text(1, pos, '  ${file}')
 					}
 				} else {
-					if encountered_file == -1 {
+					if encountered_file == false {
 						app.tui.set_color(r: 255, g: 255, b: 255) // file font color
-						encountered_file = i
+						encountered_file = true
 					}
 					if i == app.actual_i {
 						app.tui.set_bg_color(r: app.file_highlight[0], g: app.file_highlight[1], b: app.file_highlight[2])
-						app.tui.draw_text(1, i + 4, '> ${file}')
+						app.tui.draw_text(1, pos, '> ${file}')
 						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 					} else {
-						app.tui.draw_text(1, i + 4, '  ${file}')
+						app.tui.draw_text(1, pos, '  ${file}')
 					}
 				}
 			}
@@ -453,11 +484,6 @@ fn (mut app App) render() {
 		if app.dir_list.len == 0 {
 			app.tui.draw_text(2, 3, 'Empty directory')
 		} else {
-			if encountered_file != -1 {
-				app.tui.draw_text(1, encountered_file + 3, '-------------------')
-			} else {
-				app.tui.draw_text(1, app.dir_list.len + 3, '-------------------')
-			}
 			if app.search_results != [] && app.search_i != -1 {
 				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.search_results[app.search_i])))
 				bottom_text := '${(if !os.is_dir(app.search_results[app.search_i]) {space_nb(os.file_size(app.search_results[app.search_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.search_results[app.search_i])}'
@@ -547,7 +573,11 @@ fn (mut app App) render() {
 				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, 7)
 			}
 		}
-		app.tui.draw_text(app.tui.window_width/10+2, 5, "Search")
+		if app.search_success {
+			app.tui.draw_text(app.tui.window_width/10+2, 5, "Search - ${app.search_time}s")
+		}else {
+			app.tui.draw_text(app.tui.window_width/10+2, 5, "Search")
+		}
 		app.tui.draw_text(app.tui.window_width/10+3, 6, "${app.search_text}")
 	}
 
@@ -564,7 +594,8 @@ fn frame(x voidptr) {
 	if app.old_actual_path != app.actual_path {
 		app.update_dir_list()
 		ask_render = true
-		app.actual_i = app.find_last_dir()
+		//app.actual_i = app.find_last_dir()
+		app.actual_i = 0
 		app.old_actual_path = app.actual_path
 	} else {
 		if app.frame_nb % 360 == 0 {
