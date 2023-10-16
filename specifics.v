@@ -100,3 +100,34 @@ fn search(search_text string, actual_path string) []string{
 	}
 	return output
 }
+
+fn command_execute(cmd_text string) {
+	result := os.execute("$start_path\\exec_cmd.bat $cmd_text")
+	os.write_file('$start_path/cmd_output.txt', result.output) or { panic(err) }
+	os.execute('start \" \" $start_path/cmd_output.txt')
+}
+
+fn (mut app App) reset_search() {
+	app.search_mode = false
+	app.search_results = []
+	app.search_success = false
+	app.search_time = 0.0
+	app.search_i = -1
+	app.search_scroll = 0
+}
+
+fn (mut app App) reset_fav() {
+	app.fav_index = 0
+	app.fav_mode = false
+	app.fav_scroll = 0
+}
+
+fn (mut app App) reset_question() {
+	app.question_mode = ""
+	app.question_answer = false
+}
+
+fn (mut app App) reset_edit() {
+	app.edit_text = ""
+	app.edit_mode = ""
+}

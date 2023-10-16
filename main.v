@@ -12,12 +12,11 @@ const (
 /*
 ask about -prof and -prod for  term.ui
 TODO :
-+ scroll si trop de files / trop de chars dans l'input
++ scroll si trop de chars dans l'input
 + help shortcuts like ? for ex
 + add/suppr with short cut Favorites files
 
 . rename
-.ù 
 . lettre en majuscucules
 . apparition dans un dossier choisi
 . multiple file selection 
@@ -27,6 +26,7 @@ TODO :
 . si ctrl + 1->9  jump au fichier dans x 
 . access any parameter of config.toml in the tui (with interfaces)
 
+- refonte du code
 - opti search -> multithreading ?
 - copy name of elem
 - title of the window
@@ -38,6 +38,7 @@ TODO :
 - find a way to redraw only the modified things (will enable the full custom bg)
 - clearer crash logs / no crashes of the app (but fails yeah)
 - diff algo tri
+-- refonte du code
 
 ? Protected files
 ? appui sur a->z / 0->9 emmène sur le prochain fichier contenant cette lettre
@@ -56,6 +57,7 @@ mut:
 	last_event  string
 	fav_mode bool
 	fav_index int
+	fav_scroll int
 	edit_mode string
 	question_mode string
 	question_answer bool
@@ -72,6 +74,7 @@ mut:
 	search_i int = -1
 	search_success bool
 	search_time f64
+	search_scroll int
 
 	old_actual_path string
 	old_actual_i    int
@@ -108,8 +111,7 @@ fn event(e &tui.Event, x voidptr) {
 			match e.code {
 				.null {}
 				.escape {
-					app.edit_mode = ""
-					app.edit_text = ""
+					app.reset_edit()
 					app.last_event = "escape edit"
 				}
 				.backspace {
@@ -121,15 +123,13 @@ fn event(e &tui.Event, x voidptr) {
 					if app.edit_mode == "Name of the new folder:" {
 						os.mkdir(os.join_path_single(app.actual_path, app.edit_text)) or {er("mkdir $err")}
 						app.update_dir_list()
-						app.edit_text = ""
-						app.edit_mode = ""
+						app.reset_edit()
 						app.last_event = "create folder escape edit"
 					}else if app.edit_mode == "Name of the new file:" {
 						mut f := os.create(os.join_path_single(app.actual_path, app.edit_text)) or {er("create file $err");os.File{}}
 						f.close()
 						app.update_dir_list()
-						app.edit_text = ""
-						app.edit_mode = ""
+						app.reset_edit()
 						app.last_event = "create file escape edit"
 					}
 				}
@@ -161,13 +161,10 @@ fn event(e &tui.Event, x voidptr) {
 							}
 						}
 					}
-					app.refresh = true
-					app.question_mode = ''
-					app.question_answer = false
+					app.reset_question()
 				}
 				.escape {
-					app.question_mode = ""
-					app.question_answer = false
+					app.reset_question()
 					app.last_event = "escape question"
 				}
 				else{}
@@ -175,33 +172,49 @@ fn event(e &tui.Event, x voidptr) {
 		} else if app.fav_mode{
 			match e.code {
 				.f {
-					app.fav_index = 0
-					app.fav_mode = false
+					app.reset_fav()
 				}
 				.escape {
-					app.fav_index = 0
-					app.fav_mode = false
+					app.reset_fav()
 				}
 				.up {
 					if app.fav_folders != [] {
-						app.fav_index = if (app.fav_index - 1) == -1 {
-								app.fav_folders.len - 1
-							} else {
-								app.fav_index - 1
+						if (app.fav_index - 1) == -1 {
+							app.fav_index = app.fav_folders.len - 1
+							if app.fav_folders.len > app.tui.window_height - 10 {
+								app.fav_scroll = -app.tui.window_height + 14 + app.fav_index
 							}
+						} else {
+							app.fav_index = app.fav_index - 1
+						}
+						if app.fav_folders.len > app.tui.window_height - 10 {
+							if app.fav_index - 3 < app.fav_scroll  {
+								if app.fav_scroll > 0 {
+									app.fav_scroll -= 1
+								}
+							}
+						}
 					}
 					app.last_event = 'fav up'
 				}
 				.down {
 					if app.fav_folders != [] {
 						app.fav_index = (app.fav_index + 1) % app.fav_folders.len
+						if app.fav_folders.len > app.tui.window_height - 10 {
+							if app.fav_index - app.fav_scroll > app.tui.window_height - 14 {
+								app.fav_scroll = -app.tui.window_height + 14 + app.fav_index
+							} else {
+								if app.fav_index == 0 {
+									app.fav_scroll = 0
+								}
+							}
+						}
 					}
 					app.last_event = 'fav down'
 				}
 				.enter {
 					app.actual_path = app.fav_folders[app.fav_index]
-					app.fav_index = 0
-					app.fav_mode = false
+					app.reset_fav()
 					os.chdir(app.actual_path) or {
 						er('go in fav ${err}')
 						app.chdir_error = '${err}'
@@ -219,8 +232,7 @@ fn event(e &tui.Event, x voidptr) {
 					app.cmd_mode = false
 				}
 				.enter {
-					spawn os.execute("start cmd /c" + app.cmd_text)
-					er('ooo')
+					spawn command_execute(app.cmd_text)
 					app.cmd_mode = false
 				}
 				.backspace {
@@ -233,10 +245,7 @@ fn event(e &tui.Event, x voidptr) {
 		} else if app.search_mode {
 			match e.code {
 				.escape {
-					app.search_mode = false
-					app.search_results = []
-					app.search_success = false
-					app.search_time = 0.0
+					app.reset_search()
 				}
 				.enter {
 					if app.search_i == -1{
@@ -252,10 +261,7 @@ fn event(e &tui.Event, x voidptr) {
 								er('go to w/ search ${err}')
 								app.chdir_error = '${err}'
 							}
-							app.search_mode = false
-							app.search_results = []
-							app.search_time = 0.0
-							er("werk")
+							app.reset_search()
 						} else {
 							file_ext := os.file_ext(app.search_results[app.search_i])
 							if file_ext in app.associated_apps{
@@ -273,16 +279,35 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.up {
 					if app.search_results != [] {
-						app.search_i = if (app.search_i - 1) <= -1 {
-							app.search_results.len - 1
+						if app.search_i - 1 <= -1 {
+							app.search_i = app.search_results.len - 1
+							if app.search_results.len > app.tui.window_height - 12 {
+								app.search_scroll = -app.tui.window_height + 16 + app.search_i
+							}
 						} else {
-							app.search_i - 1
+							app.search_i = app.search_i - 1
+						}
+						if app.search_results.len > app.tui.window_height - 12 {
+							if app.search_i - 3 < app.search_scroll  {
+								if app.search_scroll > 0 {
+									app.search_scroll -= 1
+								}
+							}
 						}
 					}
 				}
 				.down {
 					if app.search_results != [] {
 						app.search_i = (app.search_i + 1) % app.search_results.len
+						if app.search_results.len > app.tui.window_height - 12 {
+							if app.search_i - app.search_scroll > app.tui.window_height - 16 {
+								app.search_scroll = -app.tui.window_height + 16 + app.search_i
+							} else {
+								if app.search_i == 0 {
+									app.search_scroll = 0
+								}
+							}
+						}
 					}
 				}
 				else {app.search_text += key_str(e.code); app.search_i = -1}
@@ -461,10 +486,10 @@ fn (mut app App) render() {
  				if os.is_dir(file) {
 					if i == app.actual_i {
 						app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2])
-						app.tui.draw_text(1, pos, '> ${file}')
+					}
+					app.tui.draw_text(3, pos, '${file}')
+					if i == app.actual_i {
 						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-					} else {
-						app.tui.draw_text(1, pos, '  ${file}')
 					}
 				} else {
 					if encountered_file == false {
@@ -473,10 +498,10 @@ fn (mut app App) render() {
 					}
 					if i == app.actual_i {
 						app.tui.set_bg_color(r: app.file_highlight[0], g: app.file_highlight[1], b: app.file_highlight[2])
-						app.tui.draw_text(1, pos, '> ${file}')
+					}
+					app.tui.draw_text(3, pos, '${file}')
+					if i == app.actual_i {
 						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-					} else {
-						app.tui.draw_text(1, pos, '  ${file}')
 					}
 				}
 			}
@@ -486,7 +511,7 @@ fn (mut app App) render() {
 		} else {
 			if app.search_results != [] && app.search_i != -1 {
 				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.search_results[app.search_i])))
-				bottom_text := '${(if !os.is_dir(app.search_results[app.search_i]) {space_nb(os.file_size(app.search_results[app.search_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.search_results[app.search_i])}'
+				bottom_text := '${(if !os.is_dir(app.search_results[app.search_i]) {space_nb(os.file_size(app.search_results[app.search_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.search_results[app.search_i])}    $app.search_scroll'
 				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 			}else{
 				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.dir_list[app.actual_i])))
@@ -512,24 +537,26 @@ fn (mut app App) render() {
 		app.tui.draw_text(app.tui.window_width/2-9, (app.tui.window_height-1)/2-1, app.question_mode)
 		if app.question_answer{
 			app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-			app.tui.draw_text(app.tui.window_width/2-3, (app.tui.window_height-1)/2,"No")
-			app.tui.set_bg_color(r: app.choice_highlight[0], g: app.choice_highlight[1], b: app.choice_highlight[2])
 		}else{
 			app.tui.set_bg_color(r: app.choice_highlight[0], g: app.choice_highlight[1], b: app.choice_highlight[2])
-			app.tui.draw_text(app.tui.window_width/2-3, (app.tui.window_height-1)/2,"No")
+		}
+		app.tui.draw_text(app.tui.window_width/2-3, (app.tui.window_height-1)/2,"No")
+		if app.question_answer{
+			app.tui.set_bg_color(r: app.choice_highlight[0], g: app.choice_highlight[1], b: app.choice_highlight[2])
+		}else{
 			app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 		}
 		app.tui.draw_text(app.tui.window_width/2, (app.tui.window_height-1)/2, "Yes")
 		app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 	}else if app.fav_mode {
-		app.draw_box(app.tui.window_width/2-30, (app.tui.window_height-1)/2-10, app.tui.window_width/2+30, (app.tui.window_height-1)/2+10)
-		app.tui.draw_text(app.tui.window_width/2-28, (app.tui.window_height-1)/2-10, "Favorites")
-		for i, fav in app.fav_folders {
-			if app.fav_index == i {
+		app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, app.tui.window_height-4)
+		app.tui.draw_text(app.tui.window_width/10+2, 5, "Favorites")
+		for i, fav in app.fav_folders#[0+app.fav_scroll..app.tui.window_height-8-2+app.fav_scroll] {
+			if app.fav_index-app.fav_scroll == i {
 				app.tui.set_bg_color(r: app.fav_highlight[0], g: app.fav_highlight[1], b: app.fav_highlight[2])
 			}
-			app.tui.draw_text(app.tui.window_width/2-28, (app.tui.window_height-1)/2-9+i, fav)
-			if app.fav_index == i {
+			app.tui.draw_text(app.tui.window_width/10+2, 6+i, fav)
+			if app.fav_index-app.fav_scroll == i {
 				app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 			}
 		}
@@ -539,29 +566,15 @@ fn (mut app App) render() {
 		app.tui.draw_text(app.tui.window_width/10+2, (app.tui.window_height-1)/2, "> $app.cmd_text")
 	} else if app.search_mode {
 		if app.search_results != [] {
-			if app.search_results.len + 8 + 5 > app.tui.window_height {
-				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, app.tui.window_height-4)
-				app.draw_bar(app.tui.window_width/10, 7, app.tui.window_width*9/10)
-				for i, result in app.search_results[0..app.tui.window_height-8-4] {
-					if i == app.search_i{
-						app.tui.set_bg_color(r: app.search_highlight[0], g: app.search_highlight[1], b: app.search_highlight[2])
-					}
-					app.tui.draw_text(app.tui.window_width/10+1, 8+i, "> ${result[app.actual_path.len..]}")
-					if i == app.search_i{
-						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-					}
+			app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, app.tui.window_height-4)
+			app.draw_bar(app.tui.window_width/10, 7, app.tui.window_width*9/10)
+			for i, result in app.search_results#[0+app.search_scroll..app.tui.window_height-8-4+app.search_scroll] {
+				if i == app.search_i-app.search_scroll{
+					app.tui.set_bg_color(r: app.search_highlight[0], g: app.search_highlight[1], b: app.search_highlight[2])
 				}
-			} else {
-				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, 7+app.search_results.len+1)
-				app.draw_bar(app.tui.window_width/10, 7, app.tui.window_width*9/10)
-				for i, result in app.search_results {
-					if i == app.search_i{
-						app.tui.set_bg_color(r: app.search_highlight[0], g: app.search_highlight[1], b: app.search_highlight[2])
-					}
-					app.tui.draw_text(app.tui.window_width/10+1, 8+i, "> ${result[app.actual_path.len..]}")
-					if i == app.search_i{
-						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-					}
+				app.tui.draw_text(app.tui.window_width/10+2, 8+i, "${result[app.actual_path.len..]}")
+				if i == app.search_i-app.search_scroll{
+					app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 				}
 			}
 		}else {
@@ -573,11 +586,8 @@ fn (mut app App) render() {
 				app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, 7)
 			}
 		}
-		if app.search_success {
-			app.tui.draw_text(app.tui.window_width/10+2, 5, "Search - ${app.search_time}s")
-		}else {
-			app.tui.draw_text(app.tui.window_width/10+2, 5, "Search")
-		}
+		title := if app.search_success { "Search - ${app.search_time}s" } else { "Search" }
+		app.tui.draw_text(app.tui.window_width/10+2, 5, title)
 		app.tui.draw_text(app.tui.window_width/10+3, 6, "${app.search_text}")
 	}
 

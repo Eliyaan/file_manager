@@ -13,3 +13,4 @@ f -> favorites dirs
 c -> open the field to enter and execute a command
 crtl + c/x/v -> copy/cut/paste
 ctrl + shift + v -> overwrite
+space -> search bar
