@@ -10,11 +10,11 @@ const (
 )
 
 /*
-ask about -prof and -prod for  term.ui
 TODO :
 + scroll si trop de chars dans l'input
 + help shortcuts like ? for ex
 + add/suppr with short cut Favorites files
++ faire un release propre : -prod, tous les fichiers de config propres dans un zip
 
 . rename
 . lettre en majuscucules
@@ -24,7 +24,8 @@ TODO :
 . Copier le path de l'elem
 . Tabs
 . si ctrl + 1->9  jump au fichier dans x 
-. access any parameter of config.toml in the tui (with interfaces)
+. refonte de la config :
+. access any parameter of config.toml in the tui (with guis), cleaner files etc
 
 - refonte du code
 - opti search -> multithreading ?
