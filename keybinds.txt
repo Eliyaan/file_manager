@@ -1,16 +1,17 @@
-left -> go back to previous dir
-right/enter -> go in (open/go in dir)
-up/down -> move the cusros
-n -> new file
-shift + n -> new folder
-delete -> delete file
-shift + delete -> delete folder 
-(press enter to choose an option)
-r -> reload the display
-esc/q -> quit the app
-esc -> quit current gui
-f -> favorites dirs
-c -> open the field to enter and execute a command
-crtl + c/x/v -> copy/cut/paste
-ctrl + shift + v -> overwrite
-space -> search bar
+left            -> go back to previous dir
+right/enter     -> go in (open/go in dir)
+up/down         -> move the cusros
+n               -> new file
+shift n         -> new folder
+delete          -> delete file (press enter to choose an option)
+shift del       -> delete folder 
+r               -> rename file
+shift r         -> reload the display
+esc/q           -> quit the app
+esc             -> quit current gui
+f               -> favorites dirs
+c               -> open the field to enter and execute a command
+ctrl c/x/v      -> copy/cut/paste
+ctrl shift v    -> overwrite
+space           -> search bar
+?               -> help

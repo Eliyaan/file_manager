@@ -11,33 +11,36 @@ const (
 
 /*
 TODO :
-+ scroll si trop de chars dans l'input
-+ help shortcuts like ? for ex
-+ add/suppr with short cut Favorites files
+R1:
++ lettre en majuscucules
++ apparition dans un dossier choisi
++ si ctrl + 1->9  jump au fichier dans x 
 + faire un release propre : -prod, tous les fichiers de config propres dans un zip
 
-. rename
-. lettre en majuscucules
-. apparition dans un dossier choisi
+
+R2:
 . multiple file selection 
+. Tabs 
+. clearer crash logs / no crashes of the app (but fails yeah)
+. affichage des erreurs 
 . Copier le path
 . Copier le path de l'elem
-. Tabs
-. si ctrl + 1->9  jump au fichier dans x 
 . refonte de la config :
 . access any parameter of config.toml in the tui (with guis), cleaner files etc
+. add/suppr with short cut Favorites files
+. find a way to redraw only the modified things (will enable the full custom bg) 
+. favorite commands
+. pouvoir changer les raccourcis de bases avec la config (ex: n pour nouveau fichier en j)
+
+
 
 - refonte du code
 - opti search -> multithreading ?
 - copy name of elem
-- title of the window
 - config : colors
 - zip
 - config : choose your own border chars
 - Launch programs (with extention name?) (avec truc comme l'autocomplétion sous la barre de recherche)
-- favorite commands
-- find a way to redraw only the modified things (will enable the full custom bg)
-- clearer crash logs / no crashes of the app (but fails yeah)
 - diff algo tri
 -- refonte du code
 
@@ -76,6 +79,7 @@ mut:
 	search_success bool
 	search_time f64
 	search_scroll int
+	help_mode bool
 
 	old_actual_path string
 	old_actual_i    int
@@ -90,6 +94,7 @@ mut:
 	old_search_mode bool
 	old_search_text string
 	old_search_i int
+	old_help_mode bool
 
 	chdir_error string
 
@@ -121,17 +126,27 @@ fn event(e &tui.Event, x voidptr) {
 					}
 				}
 				.enter {
-					if app.edit_mode == "Name of the new folder:" {
-						os.mkdir(os.join_path_single(app.actual_path, app.edit_text)) or {er("mkdir $err")}
-						app.update_dir_list()
-						app.reset_edit()
-						app.last_event = "create folder escape edit"
-					}else if app.edit_mode == "Name of the new file:" {
-						mut f := os.create(os.join_path_single(app.actual_path, app.edit_text)) or {er("create file $err");os.File{}}
-						f.close()
-						app.update_dir_list()
-						app.reset_edit()
-						app.last_event = "create file escape edit"
+					match app.edit_mode { 
+						"Name of the new folder:" {
+							os.mkdir(os.join_path_single(app.actual_path, app.edit_text)) or {er("mkdir $err")}
+							app.update_dir_list()
+							app.reset_edit()
+							app.last_event = "create folder escape edit"
+						} 
+						"Name of the new file:" {
+							mut f := os.create(os.join_path_single(app.actual_path, app.edit_text)) or {er("create file $err");os.File{}}
+							f.close()
+							app.update_dir_list()
+							app.reset_edit()
+							app.last_event = "create file escape edit"
+						}
+						"Rename:" {
+							os.rename("$app.actual_path\\${app.dir_list[app.actual_i]}", "$app.actual_path\\$app.edit_text") or {er("rename $err")}
+							app.update_dir_list()
+							app.reset_edit()
+							app.last_event = "rename"
+						}
+						else {}
 					}
 				}
 				else{
@@ -313,8 +328,21 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				else {app.search_text += key_str(e.code); app.search_i = -1}
 			}
-		} else {
+		} else if app.help_mode {
 			match e.code {
+				.question_mark {
+					app.help_mode = false
+				}
+				.escape {
+					app.help_mode = false
+				}
+				else{}
+			}
+		}else {
+			match e.code {
+				.question_mark {
+					app.help_mode = true
+				}
 				.c  {
 					if e.modifiers.has(.ctrl){
 						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
@@ -419,12 +447,17 @@ fn event(e &tui.Event, x voidptr) {
 					}
 				}
 				.r {
-					app.update_dir_list()
-					if app.dir_list.len > 0{
-						app.actual_i = app.actual_i % app.dir_list.len
+					if e.modifiers.has(.shift){
+						app.update_dir_list()
+						if app.dir_list.len > 0{
+							app.actual_i = app.actual_i % app.dir_list.len
+						}
+						app.refresh = true
+						app.last_event = 'refresh'
+					}else{
+						app.edit_mode = 'Rename:'
+						app.last_event = 'rename'
 					}
-					app.refresh = true
-					app.last_event = 'refresh'
 				}
 				.delete {
 					if app.dir_list != [] {
@@ -477,33 +510,34 @@ fn (mut app App) render() {
 	
 	app.tui.draw_text(0, 0, '${app.actual_path}')
 	app.tui.draw_text(app.tui.window_width-app.copy_path.len-12, 0, 'Clipboard : ${app.copy_path}')
+	// Draw the box around the files
+	app.draw_box(0, 2, app.tui.window_width, app.tui.window_height-1)
+	app.tui.draw_text(3, 2, app.sort_name)
 	// Draw the files
 	app.tui.set_color(r: app.folder_font[0], g: app.folder_font[1], b: app.folder_font[2]) // color for dirs
 	mut encountered_file := false
 	if app.chdir_error == '' {
-		for i, file in app.dir_list {
-			if i - app.actual_scroll < app.tui.window_height && i - app.actual_scroll >= 0 {	
-				pos := -app.actual_scroll + i + 3
- 				if os.is_dir(file) {
-					if i == app.actual_i {
-						app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2])
-					}
-					app.tui.draw_text(3, pos, '${file}')
-					if i == app.actual_i {
-						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-					}
-				} else {
-					if encountered_file == false {
-						app.tui.set_color(r: 255, g: 255, b: 255) // file font color
-						encountered_file = true
-					}
-					if i == app.actual_i {
-						app.tui.set_bg_color(r: app.file_highlight[0], g: app.file_highlight[1], b: app.file_highlight[2])
-					}
-					app.tui.draw_text(3, pos, '${file}')
-					if i == app.actual_i {
-						app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-					}
+		for i, file in app.dir_list#[0+app.actual_scroll..app.tui.window_height+app.actual_scroll-4] {
+			pos := i+3
+			if os.is_dir(file) {
+				if i == app.actual_i-app.actual_scroll {
+					app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2])
+				}
+				app.tui.draw_text(3, pos, '${file}')
+				if i == app.actual_i-app.actual_scroll {
+					app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
+				}
+			} else {
+				if encountered_file == false {
+					app.tui.set_color(r: 255, g: 255, b: 255) // file font color
+					encountered_file = true
+				}
+				if i == app.actual_i-app.actual_scroll {
+					app.tui.set_bg_color(r: app.file_highlight[0], g: app.file_highlight[1], b: app.file_highlight[2])
+				}
+				app.tui.draw_text(3, pos, '${file}')
+				if i == app.actual_i-app.actual_scroll {
+					app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 				}
 			}
 		}
@@ -525,14 +559,10 @@ fn (mut app App) render() {
 	}
 	app.tui.set_color(r: 255, g: 255, b: 255)
 
-	// Draw the box around the files
-	app.draw_box(0, 2, app.tui.window_width, app.tui.window_height-1)
-	app.tui.draw_text(3, 2, app.sort_name)
-
 	if app.edit_mode != "" {
-		app.draw_box(app.tui.window_width/2-50, (app.tui.window_height-1)/2-2, app.tui.window_width/2+50, (app.tui.window_height-1)/2+1)
-		app.tui.draw_text(app.tui.window_width/2-49, (app.tui.window_height-1)/2-1, app.edit_mode)
-		app.tui.draw_text(app.tui.window_width/2-49, (app.tui.window_height-1)/2, app.edit_text)
+		app.draw_box(app.tui.window_width/10, (app.tui.window_height-1)/2-1, app.tui.window_width*9/10, (app.tui.window_height-1)/2+1)
+		app.tui.draw_text(app.tui.window_width/10+2, (app.tui.window_height-1)/2-1, app.edit_mode)
+		app.tui.draw_text(app.tui.window_width/10+2, (app.tui.window_height-1)/2, app.edit_text)
 	}else if app.question_mode != "" {
 		app.draw_box(app.tui.window_width/2-15, (app.tui.window_height-1)/2-2, app.tui.window_width/2+15, (app.tui.window_height-1)/2+1)
 		app.tui.draw_text(app.tui.window_width/2-9, (app.tui.window_height-1)/2-1, app.question_mode)
@@ -590,6 +620,12 @@ fn (mut app App) render() {
 		title := if app.search_success { "Search - ${app.search_time}s" } else { "Search" }
 		app.tui.draw_text(app.tui.window_width/10+2, 5, title)
 		app.tui.draw_text(app.tui.window_width/10+3, 6, "${app.search_text}")
+	}else if app.help_mode {
+		app.draw_box(app.tui.window_width/10, 5, app.tui.window_width*9/10, app.tui.window_height-4)
+		for i, line in os.read_lines("$start_path\\keybinds.txt")or{["read keybinds.txt not successful"]}{
+			app.tui.draw_text(app.tui.window_width/10+2, 6+i, line)
+		}		
+		app.tui.draw_text(app.tui.window_width/10+2, 5, 'Help')
 	}
 
 	app.tui.set_cursor_position(0, 0)
@@ -652,6 +688,9 @@ fn frame(x voidptr) {
 	}else if app.old_search_i != app.search_i {
 		ask_render = true
 		app.old_search_i = app.search_i
+	}else if app.old_help_mode != app.help_mode {
+		ask_render = true
+		app.old_help_mode = app.help_mode
 	}
 
 	if ask_render {
@@ -667,7 +706,6 @@ fn (mut app App) initialisation() {
 }
 
 fn main() {
-	println(start_path)
 	mut app := &App{}
 	config := toml.parse_file("config.toml") or {er("Config file error $err"); println("juujuj"); toml.Doc{}}
 	if config.value('exts_n_paths') == toml.Any(toml.Null{}) {
@@ -723,6 +761,7 @@ The returned path does not end in a separator unless it is the root directory.
 		user_data: app
 		event_fn: event
 		frame_fn: frame
+		window_title: "fm"
 		hide_cursor: true
 	)
 	app.initialisation()
