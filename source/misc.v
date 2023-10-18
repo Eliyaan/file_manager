@@ -18,8 +18,8 @@ fn space_nb(nb string) string {
 	return result
 }
 
-fn key_str(code tui.KeyCode) string {
-	return match code {
+fn key_str(code tui.KeyCode, modifiers tui.Modifiers) string {
+	key := match code {
 		.null {""}
 		.underscore {
 			 "_"
@@ -75,6 +75,8 @@ fn key_str(code tui.KeyCode) string {
 		.greater_than {">"}
 		.equal {"="}
 		.at {"@"}
+		.vertical_bar {"|"}
 		else {code.str()}
 	}
+	return if modifiers.has(.shift) {key.to_upper()} else {key}
 }

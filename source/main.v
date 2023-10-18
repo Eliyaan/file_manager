@@ -10,19 +10,19 @@ const (
 )
 
 /*
+Can a tray app react to keyboard inputs ?
 TODO :
 R1:
-+ lettre en majuscucules
 + apparition dans un dossier choisi
 + si ctrl + 1->9  jump au fichier dans x 
 + faire un release propre : -prod, tous les fichiers de config propres dans un zip
-
 
 R2:
 . multiple file selection 
 . Tabs 
 . clearer crash logs / no crashes of the app (but fails yeah)
 . affichage des erreurs 
+. affichage des erreurs d'exec de la commande
 . Copier le path
 . Copier le path de l'elem
 . refonte de la config :
@@ -31,17 +31,21 @@ R2:
 . find a way to redraw only the modified things (will enable the full custom bg) 
 . favorite commands
 . pouvoir changer les raccourcis de bases avec la config (ex: n pour nouveau fichier en j)
+. refonte du code
+. doc du code
 
 
 
-- refonte du code
-- opti search -> multithreading ?
+- progress bar search
+- progress bar paste folders
 - copy name of elem
 - config : colors
 - zip
 - config : choose your own border chars
 - Launch programs (with extention name?) (avec truc comme l'autocomplétion sous la barre de recherche)
 - diff algo tri
+- app de notes inclue
+- ide
 -- refonte du code
 
 ? Protected files
@@ -74,7 +78,7 @@ mut:
 	cmd_text string
 	search_mode bool
 	search_text string
-	search_results []string
+	search_results []FileInfo
 	search_i int = -1
 	search_success bool
 	search_time f64
@@ -150,7 +154,7 @@ fn event(e &tui.Event, x voidptr) {
 					}
 				}
 				else{
-					app.edit_text += key_str(e.code)
+					app.edit_text += key_str(e.code ,e.modifiers)
 				}
 			}
 		} else if app.question_mode != "" {			
@@ -256,7 +260,7 @@ fn event(e &tui.Event, x voidptr) {
 						app.cmd_text = app.cmd_text[0..app.cmd_text.len-1]
 					}
 				}
-				else {app.cmd_text += key_str(e.code)}
+				else {app.cmd_text += key_str(e.code, e.modifiers)}
 			}
 		} else if app.search_mode {
 			match e.code {
@@ -271,19 +275,19 @@ fn event(e &tui.Event, x voidptr) {
 						app.search_success = true
 						app.refresh = true
 					}else{
-						if os.is_dir(app.search_results[app.search_i]) {
-							app.actual_path = app.search_results[app.search_i]
+						if app.search_results[app.search_i].is_dir() {
+							app.actual_path = app.search_results[app.search_i].full_path
 							os.chdir(app.actual_path) or {
 								er('go to w/ search ${err}')
 								app.chdir_error = '${err}'
 							}
 							app.reset_search()
 						} else {
-							file_ext := os.file_ext(app.search_results[app.search_i])
+							file_ext := os.file_ext(app.search_results[app.search_i].name)
 							if file_ext in app.associated_apps{
-								spawn os.execute('${app.associated_apps[file_ext]} \"${app.search_results[app.search_i]}\"')
+								spawn os.execute('${app.associated_apps[file_ext]} \"${app.search_results[app.search_i].full_path}\"')
 							}else{
-								spawn os.execute('${app.associated_apps["else"]} \"${app.search_results[app.search_i]}\"')
+								spawn os.execute('${app.associated_apps["else"]} \"${app.search_results[app.search_i].full_path}\"')
 							}
 						}
 					}
@@ -326,7 +330,7 @@ fn event(e &tui.Event, x voidptr) {
 						}
 					}
 				}
-				else {app.search_text += key_str(e.code); app.search_i = -1}
+				else {app.search_text += key_str(e.code, e.modifiers); app.search_i = -1}
 			}
 		} else if app.help_mode {
 			match e.code {
@@ -545,8 +549,7 @@ fn (mut app App) render() {
 			app.tui.draw_text(2, 3, 'Empty directory')
 		} else {
 			if app.search_results != [] && app.search_i != -1 {
-				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.search_results[app.search_i])))
-				bottom_text := '${(if !os.is_dir(app.search_results[app.search_i]) {space_nb(os.file_size(app.search_results[app.search_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.search_results[app.search_i])}    $app.search_scroll'
+				bottom_text := '${(if !app.search_results[app.search_i].is_dir() {space_nb(app.search_results[app.search_i].file_size().str()) + 'o'} else {'Directory'}):-15} | Modified the ${app.search_results[app.search_i].write_time().nice_time()} | Accessed the ${app.search_results[app.search_i].access_time().nice_time()} '
 				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 			}else{
 				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.dir_list[app.actual_i])))
@@ -603,7 +606,7 @@ fn (mut app App) render() {
 				if i == app.search_i-app.search_scroll{
 					app.tui.set_bg_color(r: app.search_highlight[0], g: app.search_highlight[1], b: app.search_highlight[2])
 				}
-				app.tui.draw_text(app.tui.window_width/10+2, 8+i, "${result[app.actual_path.len..]}")
+				app.tui.draw_text(app.tui.window_width/10+2, 8+i, "${result.full_path[app.actual_path.len..]}")
 				if i == app.search_i-app.search_scroll{
 					app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 				}
@@ -641,8 +644,8 @@ fn frame(x voidptr) {
 	if app.old_actual_path != app.actual_path {
 		app.update_dir_list()
 		ask_render = true
-		//app.actual_i = app.find_last_dir()
-		app.actual_i = 0
+		app.actual_i = app.find_last_dir()
+		//app.actual_i = 0
 		app.old_actual_path = app.actual_path
 	} else {
 		if app.frame_nb % 360 == 0 {
@@ -711,8 +714,11 @@ fn main() {
 	if config.value('exts_n_paths') == toml.Any(toml.Null{}) {
 		er("read config file error")
 	}	
-
 	tmp_array := config.value('exts_n_paths').array().map(it.string())
+	if tmp_array.len%2 != 0 {
+		eprintln("Error: elements in exts_n_paths (config.toml) should be in pairs")
+		return
+	}
 	for i, elem in tmp_array{
 		if i%2 == 0{
 			app.associated_apps[elem] = tmp_array[i+1]

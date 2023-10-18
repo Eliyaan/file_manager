@@ -77,30 +77,6 @@ fn (mut app App) draw_bar(start_x int, start_y int, finish_x int) {
 	app.tui.draw_text(start_x, start_y, "\u251C${x_bar}\u2524")
 }
 
-[direct_array_access]
-fn search(search_text string, actual_path string) []string{
-	mut output := []string{}
-	mut path := ""
-	mut next_dirs := []string{cap:100}
-	next_dirs << actual_path.replace('/', '\\')
-	for next_dirs.len > 0{
-		path = next_dirs.pop()
-		for elem in os.ls(path) or {er("search $err"); []string{}}{
-			if os.is_dir(path+'\\'+elem) {
-				next_dirs << path+'\\'+elem
-				if elem.contains(search_text){
-					output << path+'\\'+elem
-				}
-			}else{
-				if elem.contains(search_text){
-					output << path+'\\'+elem
-				}
-			}
-		}
-	}
-	return output
-}
-
 fn command_execute(cmd_text string) {
 	result := os.execute("$start_path\\exec_cmd.bat $cmd_text")
 	os.write_file('$start_path/cmd_output.txt', result.output) or { panic(err) }
