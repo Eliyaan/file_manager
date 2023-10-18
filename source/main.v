@@ -59,7 +59,7 @@ mut:
 	actual_path string = os.abs_path('')
 	actual_i    int
 	actual_scroll int
-	dir_list    []string
+	dir_list    []FileInfo
 	fav_folders []string
 	frame_nb    int
 	last_event  string
@@ -145,7 +145,7 @@ fn event(e &tui.Event, x voidptr) {
 							app.last_event = "create file escape edit"
 						}
 						"Rename:" {
-							os.rename("$app.actual_path\\${app.dir_list[app.actual_i]}", "$app.actual_path\\$app.edit_text") or {er("rename $err")}
+							os.rename("$app.actual_path\\${app.dir_list[app.actual_i].name}", "$app.actual_path\\$app.edit_text") or {er("rename $err")}
 							app.update_dir_list()
 							app.reset_edit()
 							app.last_event = "rename"
@@ -164,7 +164,7 @@ fn event(e &tui.Event, x voidptr) {
 				.enter {
 					if app.question_answer{
 						if app.question_mode == "Delete this file ?" {
-							os.rm(os.join_path_single(app.actual_path, app.dir_list[app.actual_i])) or {er('rm $err')}
+							os.rm(os.join_path_single(app.actual_path, app.dir_list[app.actual_i].name)) or {er('rm $err')}
 							app.update_dir_list()
 							if app.dir_list.len > 0{
 								app.actual_i = app.actual_i % app.dir_list.len
@@ -172,7 +172,7 @@ fn event(e &tui.Event, x voidptr) {
 							app.last_event = "deleted a file"
 						}else{
 							if app.question_mode == "Delete this folder ?" {
-								os.rmdir_all(os.join_path_single(app.actual_path, app.dir_list[app.actual_i])) or {er('rmdir_all $err')}
+								os.rmdir_all(os.join_path_single(app.actual_path, app.dir_list[app.actual_i].name)) or {er('rmdir_all $err')}
 								app.update_dir_list()
 								if app.dir_list.len > 0{
 									app.actual_i = app.actual_i % app.dir_list.len
@@ -233,6 +233,18 @@ fn event(e &tui.Event, x voidptr) {
 					app.last_event = 'fav down'
 				}
 				.enter {
+					app.actual_path = app.fav_folders[app.fav_index]
+					app.reset_fav()
+					os.chdir(app.actual_path) or {
+						er('go in fav ${err}')
+						app.chdir_error = '${err}'
+					}
+					app.update_dir_list()
+					if app.dir_list.len > 0{
+						app.actual_i = app.actual_i % app.dir_list.len
+					}
+				}
+				.left {
 					app.actual_path = app.fav_folders[app.fav_index]
 					app.reset_fav()
 					os.chdir(app.actual_path) or {
@@ -349,7 +361,7 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.c  {
 					if e.modifiers.has(.ctrl){
-						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
+						app.copy_path = os.abs_path(app.dir_list[app.actual_i].name)
 						app.refresh = true
 						app.cut_mode = false
 						app.last_event = 'copy'
@@ -361,7 +373,7 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.x  {
 					if e.modifiers.has(.ctrl){
-						app.copy_path = os.abs_path(app.dir_list[app.actual_i])
+						app.copy_path = os.abs_path(app.dir_list[app.actual_i].name)
 						app.refresh = true
 						app.cut_mode = true
 						app.last_event = 'cut'
@@ -465,7 +477,7 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.delete {
 					if app.dir_list != [] {
-						if !os.is_dir(app.dir_list[app.actual_i]) {
+						if !app.dir_list[app.actual_i].is_dir() {
 							app.question_mode = "Delete this file ?"
 						}else{
 							if e.modifiers.has(.shift) {
@@ -523,11 +535,11 @@ fn (mut app App) render() {
 	if app.chdir_error == '' {
 		for i, file in app.dir_list#[0+app.actual_scroll..app.tui.window_height+app.actual_scroll-4] {
 			pos := i+3
-			if os.is_dir(file) {
+			if file.is_dir() {
 				if i == app.actual_i-app.actual_scroll {
 					app.tui.set_bg_color(r: app.folder_highlight[0], g: app.folder_highlight[1], b: app.folder_highlight[2])
 				}
-				app.tui.draw_text(3, pos, '${file}')
+				app.tui.draw_text(3, pos, '${file.name}')
 				if i == app.actual_i-app.actual_scroll {
 					app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 				}
@@ -539,7 +551,7 @@ fn (mut app App) render() {
 				if i == app.actual_i-app.actual_scroll {
 					app.tui.set_bg_color(r: app.file_highlight[0], g: app.file_highlight[1], b: app.file_highlight[2])
 				}
-				app.tui.draw_text(3, pos, '${file}')
+				app.tui.draw_text(3, pos, '${file.name}')
 				if i == app.actual_i-app.actual_scroll {
 					app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
 				}
@@ -549,11 +561,10 @@ fn (mut app App) render() {
 			app.tui.draw_text(2, 3, 'Empty directory')
 		} else {
 			if app.search_results != [] && app.search_i != -1 {
-				bottom_text := '${(if !app.search_results[app.search_i].is_dir() {space_nb(app.search_results[app.search_i].file_size().str()) + 'o'} else {'Directory'}):-15} | Modified the ${app.search_results[app.search_i].write_time().nice_time()} | Accessed the ${app.search_results[app.search_i].access_time().nice_time()} '
+				bottom_text := '${(if !app.search_results[app.search_i].is_dir() {space_nb(app.search_results[app.search_i].file_size().str()) + 'o'} else {'Directory'}):-15} | Modified the ${app.search_results[app.search_i].write_time().nice_time()} | Accessed the ${app.search_results[app.search_i].access_time().nice_time()} | Creatied the ${app.search_results[app.search_i].creation_time().nice_time()}'
 				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 			}else{
-				date := time.Time{}.add_seconds(int(os.file_last_mod_unix(app.dir_list[app.actual_i])))
-				bottom_text := '${(if !os.is_dir(app.dir_list[app.actual_i]) {space_nb(os.file_size(app.dir_list[app.actual_i]).str()) + 'o'} else {'Directory'}):-15} | Modified the ${date.local().format_ss():-15} | ${os.abs_path(app.dir_list[app.actual_i])}'
+				bottom_text := '${(if !app.dir_list[app.actual_i].is_dir() {space_nb(app.dir_list[app.actual_i].file_size().str()) + 'o'} else {'Directory'}):-15} | Modified the ${app.dir_list[app.actual_i].write_time().nice_time()} | Accessed the ${app.dir_list[app.actual_i].access_time().nice_time()} | Created the ${app.dir_list[app.actual_i].creation_time().nice_time()}'
 				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 			}
 		}

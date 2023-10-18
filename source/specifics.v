@@ -4,22 +4,22 @@ import os
 
 fn (mut app App) go_in() {
 	if app.dir_list != [] {
-		if os.is_dir(app.dir_list[app.actual_i]) {
+		if app.dir_list[app.actual_i].is_dir() {
 			if app.actual_path[app.actual_path.len - 1].ascii_str() != '\\' {
-				app.actual_path = '${app.actual_path}\\${app.dir_list[app.actual_i]}'
+				app.actual_path = '${app.actual_path}\\${app.dir_list[app.actual_i].name}'
 			} else {
-				app.actual_path = '${app.actual_path}${app.dir_list[app.actual_i]}'
+				app.actual_path = '${app.actual_path}${app.dir_list[app.actual_i].name}'
 			}
 			os.chdir(app.actual_path) or {
 				er('go_in ${err}')
 				app.chdir_error = '${err}'
 			}
 		} else {
-			file_ext := os.file_ext(app.dir_list[app.actual_i])
+			file_ext := os.file_ext(app.dir_list[app.actual_i].name)
 			if file_ext in app.associated_apps{
-				spawn os.execute('${app.associated_apps[file_ext]} \"${app.actual_path + '/' + app.dir_list[app.actual_i]}\"')
+				spawn os.execute('${app.associated_apps[file_ext]} \"${app.actual_path + '/' + app.dir_list[app.actual_i].name}\"')
 			}else{
-				spawn os.execute('${app.associated_apps["else"]} \"${app.actual_path + '/' + app.dir_list[app.actual_i]}\"')
+				spawn os.execute('${app.associated_apps["else"]} \"${app.actual_path + '/' + app.dir_list[app.actual_i].name}\"')
 			}
 		}
 	}
@@ -33,7 +33,7 @@ fn (mut app App) find_last_dir() int {
 			last_dir = last_dir[1..]
 		}
 		for i, elem in app.dir_list {
-			if elem == last_dir {
+			if elem.name == last_dir {
 				return i
 			}
 		}
@@ -43,12 +43,12 @@ fn (mut app App) find_last_dir() int {
 }
 
 fn (mut app App) update_dir_list() {
-	app.dir_list = os.ls(app.actual_path) or { panic(err) }
-	mut dirs := app.dir_list.filter(os.is_dir(os.abs_path(it)))
-	dirs.sort(a < b)
-	mut files := app.dir_list.filter(!os.is_dir(os.abs_path(it)))
-	files.sort(a < b)
-	app.dir_list = []string{cap:dirs.len+files.len}
+	app.dir_list = list_content(app.actual_path)
+	mut dirs := app.dir_list.filter(it.is_dir())
+	dirs.sort(a.name < b.name)
+	mut files := app.dir_list.filter(!it.is_dir())
+	files.sort(a.name < b.name)
+	app.dir_list = []FileInfo{cap:dirs.len+files.len}
 	app.dir_list << dirs
 	app.dir_list << files
 }

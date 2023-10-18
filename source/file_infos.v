@@ -52,6 +52,13 @@ fn (file_info FileInfo) write_time() SysTime {
 }
 
 [inline]
+fn (file_info FileInfo) creation_time() SysTime {
+	mut sys_time := SysTime{}
+	C.FileTimeToSystemTime(voidptr(&file_info.creation_time), voidptr(&sys_time))
+	return sys_time
+}
+
+[inline]
 fn (file_info FileInfo) access_time() SysTime {
 	mut sys_time := SysTime{}
 	C.FileTimeToSystemTime(voidptr(&file_info.last_access_time), voidptr(&sys_time))
