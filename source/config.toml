@@ -1,4 +1,4 @@
-exts_n_paths = [
+extention_app_pairs = [
 	'.txt', 'C:/windows/system32/notepad.exe',
 	'.v', 'C:/Users/PACHECON/Apps/vscodium/VSCodium.exe',
 	'.py', 'C:/Users/PACHECON/Apps/vscodium/VSCodium.exe',
@@ -6,6 +6,7 @@ exts_n_paths = [
 	'.exe', '',
 	'else', 'start " "',
 ]
+
 favorite_folders = [
 	'C:/Users/PACHECON/_cv',
 	'C:/Users/PACHECON/Apps',
@@ -14,6 +15,7 @@ favorite_folders = [
 	'C:/Users/PACHECON/_cv/file_manager'
 ]
 
+start_path = 'C:/Users/PACHECON/_cv'
 bg_color = [20, 10, 10]
 folder_highlight = [163, 81, 181]
 folder_font = [166, 202, 255]
@@ -21,4 +23,4 @@ choice_highlight = [63, 81, 181]
 file_highlight = [63, 124, 181]
 fav_highlight = [145, 45, 45]
 search_highlight = [165, 25, 25]
-keybinds = [['g', 'start cmd /c lazygit'], ['i', '"C:/Users/PACHECON/Apps/vscodium/VSCodium.exe" .'], ['s', 'sort /+15 /r prof.txt /o prof.txt']]
+keybinds = [['g', 'lazygit'], ['i', '"C:/Users/PACHECON/Apps/vscodium/VSCodium.exe" .'], ['s', 'sort /+15 /r prof.txt /o prof.txt']]

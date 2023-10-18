@@ -2,6 +2,42 @@ module main
 
 import os
 
+fn (mut app App) jump_i(nb int) {
+	if nb>0{
+		if app.dir_list != [] {
+			app.actual_i = (app.actual_i + nb) % app.dir_list.len
+			if app.dir_list.len > app.tui.window_height - 5 {
+				if app.actual_i - app.actual_scroll > app.tui.window_height - 8 {
+					app.actual_scroll = -app.tui.window_height + 8 + app.actual_i
+				} else {
+					app.actual_scroll = 0
+				}
+			}
+		}
+	}else if nb < 0{
+		if app.dir_list != [] {
+			if (app.actual_i + nb) < 0 {
+				app.actual_i = app.dir_list.len + nb
+				if app.dir_list.len > app.tui.window_height - 5 {
+					app.actual_scroll = -app.tui.window_height + 8 + app.actual_i
+				}
+			} else {
+				app.actual_i = app.actual_i + nb
+			}
+			if app.dir_list.len > app.tui.window_height - 5 {
+				if app.actual_i - 3 < app.actual_scroll  {
+					if app.actual_scroll > -nb {
+						app.actual_scroll += nb
+					}else {
+						app.actual_scroll = 0
+					}
+				}
+			}
+		}
+	}
+	app.last_event = 'jump'
+}
+
 fn (mut app App) go_in() {
 	if app.dir_list != [] {
 		if app.dir_list[app.actual_i].is_dir() {

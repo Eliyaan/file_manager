@@ -13,9 +13,6 @@ const (
 Can a tray app react to keyboard inputs ?
 TODO :
 R1:
-+ apparition dans un dossier choisi
-+ si ctrl + 1->9  jump au fichier dans x 
-+ faire un release propre : -prod, tous les fichiers de config propres dans un zip
 
 R2:
 . multiple file selection 
@@ -39,7 +36,7 @@ R2:
 - progress bar search
 - progress bar paste folders
 - copy name of elem
-- config : colors
+- config : colors (colors of the selected 'window/panel')
 - zip
 - config : choose your own border chars
 - Launch programs (with extention name?) (avec truc comme l'autocomplétion sous la barre de recherche)
@@ -507,6 +504,26 @@ fn event(e &tui.Event, x voidptr) {
 						spawn os.execute(app.key_binds[e.code.str()])
 						app.refresh = true
 						app.last_event = 'exec'
+					}else {
+						nb := match e.code.str() {
+							"_1" {1}
+							"_2" {2}
+							"_3" {3}
+							"_4" {4}
+							"_5" {5}
+							"_6" {6}
+							"_7" {7}
+							"_8" {8}
+							"_9" {9}
+							else {0}
+						}
+						if nb > 0 {
+							if e.modifiers.has(.alt){
+								app.jump_i(-nb)
+							} else {
+								app.jump_i(nb)
+							}
+						}
 					}
 				}
 			}
@@ -564,7 +581,7 @@ fn (mut app App) render() {
 				bottom_text := '${(if !app.search_results[app.search_i].is_dir() {space_nb(app.search_results[app.search_i].file_size().str()) + 'o'} else {'Directory'}):-15} | Modified the ${app.search_results[app.search_i].write_time().nice_time()} | Accessed the ${app.search_results[app.search_i].access_time().nice_time()} | Creatied the ${app.search_results[app.search_i].creation_time().nice_time()}'
 				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 			}else{
-				bottom_text := '${(if !app.dir_list[app.actual_i].is_dir() {space_nb(app.dir_list[app.actual_i].file_size().str()) + 'o'} else {'Directory'}):-15} | Modified the ${app.dir_list[app.actual_i].write_time().nice_time()} | Accessed the ${app.dir_list[app.actual_i].access_time().nice_time()} | Created the ${app.dir_list[app.actual_i].creation_time().nice_time()}'
+				bottom_text := '${(if !app.dir_list[app.actual_i].is_dir() {space_nb(app.dir_list[app.actual_i].file_size().str()) + 'o'} else {'Directory'}):-15} | Modified the ${app.dir_list[app.actual_i].write_time().nice_time()} | Accessed the ${app.dir_list[app.actual_i].access_time().nice_time()} | Created the ${app.dir_list[app.actual_i].creation_time().nice_time()} ${app.actual_scroll}'
 				app.tui.draw_text(0, app.tui.window_height, if bottom_text.len > app.tui.window_width {bottom_text[0..app.tui.window_width]} else {bottom_text})
 			}
 		}
@@ -716,18 +733,17 @@ fn (mut app App) initialisation() {
 	app.tui.set_color(r: 255, g: 255, b: 255)
 	app.update_dir_list()
 	app.tui.set_bg_color(r: app.bg_color[0], g: app.bg_color[1], b: app.bg_color[2])
-	//app.tui.draw_rect(0, 0, app.tui.window_width, app.tui.window_height)
 }
 
 fn main() {
 	mut app := &App{}
 	config := toml.parse_file("config.toml") or {er("Config file error $err"); println("juujuj"); toml.Doc{}}
-	if config.value('exts_n_paths') == toml.Any(toml.Null{}) {
+	if config.value('extention_app_pairs') == toml.Any(toml.Null{}) {
 		er("read config file error")
 	}	
-	tmp_array := config.value('exts_n_paths').array().map(it.string())
+	tmp_array := config.value('extention_app_pairs').array().map(it.string())
 	if tmp_array.len%2 != 0 {
-		eprintln("Error: elements in exts_n_paths (config.toml) should be in pairs")
+		eprintln("Error: elements in extention_app_pairs (config.toml) should be in pairs")
 		return
 	}
 	for i, elem in tmp_array{
@@ -752,6 +768,8 @@ fn main() {
 	for pair in keybinds {
 		app.key_binds[pair[0]] = pair[1]
 	}
+
+	app.actual_path = config.value('start_path').string()
 
 
 	// os.ls()
